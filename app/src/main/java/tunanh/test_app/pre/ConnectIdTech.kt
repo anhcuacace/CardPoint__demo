@@ -17,7 +17,10 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import timber.log.Timber
-import tunanh.test_app.*
+import tunanh.test_app.DataResponse
+import tunanh.test_app.LoadingStatus
+import tunanh.test_app.PreferenceStore
+import tunanh.test_app.getPreferenceValue
 import tunanh.test_app.pay.PayModel
 import tunanh.test_app.ui.DialogState
 
@@ -85,6 +88,12 @@ class ConnectIdTech private constructor() : OnReceiverListener, OnReceiverListen
 
                 listDevice(context).forEach {
                     if ((_autoConnect.value !is DataResponse.DataSuccess) || _autoConnect.value.loadingStatus == LoadingStatus.Error) {
+                        if (device!!.device_connect()) {
+                            if (device!!.device_disconnectBLE()) {
+                                _autoConnect.value = DataResponse.DataError("disconnected")
+                                return@launch
+                            }
+                        }
                         val rc = device!!.device_enableBLESearch(
                             device!!.device_getDeviceType(),
                             it,
@@ -267,6 +276,7 @@ class ConnectIdTech private constructor() : OnReceiverListener, OnReceiverListen
             val data = unencryptedTags["57"] ?: ByteArray(0)
             Timber.e(Common.getHexStringFromBytes(data))
         }
+        _cardDataState?.value = PayModel("", "", "")
     }
 
     override fun deviceConnected() {

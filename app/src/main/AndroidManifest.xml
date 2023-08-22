@@ -44,11 +44,14 @@
         <activity
             android:name=".pay.PayActivity"
             android:exported="false"
+            android:singleUser="true"
+            android:launchMode="singleTask"
             android:screenOrientation="portrait"
             android:theme="@style/Theme.Test_app" />
         <activity
             android:name=".pre.PreActivity"
             android:exported="true"
+            android:launchMode="singleTask"
             android:screenOrientation="portrait"
             android:theme="@style/Theme.Test_app">
             <intent-filter>
@@ -61,6 +64,7 @@
             android:name=".bluetooth.BluetoothActivity"
             android:configChanges="keyboardHidden|orientation|screenSize|colorMode|locale|uiMode"
             android:exported="false"
+            android:launchMode="singleTask"
             android:screenOrientation="portrait"
             android:theme="@style/Theme.Test_app" />
 

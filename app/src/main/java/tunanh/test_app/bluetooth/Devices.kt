@@ -6,17 +6,16 @@ import android.bluetooth.BluetoothDevice
 import android.bluetooth.BluetoothProfile
 import android.content.Context
 import android.content.Intent
+import android.os.Handler
+import android.os.Looper
 import android.widget.Toast
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
-import androidx.compose.material.ExperimentalMaterialApi
-import androidx.compose.material.SnackbarResult.ActionPerformed
-import androidx.compose.material.SnackbarResult.Dismissed
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
-import androidx.compose.material.rememberScaffoldState
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -45,6 +44,8 @@ import kotlin.system.exitProcess
 @Composable
 fun Devices() = with(viewModel<DevicesViewModel>()) {
     val scrollBehavior = TopAppBarDefaults.pinnedScrollBehavior()
+    val snackbarHostState = remember { SnackbarHostState() }
+
 //    val controller = LocalController.current
 //    val context = LocalContext.current
 //    val navigation = LocalNavigation.current
@@ -62,24 +63,39 @@ fun Devices() = with(viewModel<DevicesViewModel>()) {
                 },
                 scrollBehavior = scrollBehavior
             )
+        }, snackbarHost = {
+            SnackbarHost(snackbarHostState) {
+                Snackbar(
+                    modifier = Modifier.border(2.dp, MaterialTheme.colorScheme.secondary)
+                        .padding(12.dp),
+                    action = {
+                        TextButton(onClick = {
+                            it.performAction()
+                        }) {
+                            Text(it.visuals.actionLabel ?: "")
+                        }
+                    }
+                ) {
+                    Text(it.visuals.message)
+                }
+            }
         }) { padding ->
         Box(Modifier.padding(padding)) {
-            DeviceContent()
+            DeviceContent(snackbarHostState)
         }
     }
 }
 
 
-@OptIn(ExperimentalMaterialApi::class)
+
 @SuppressLint("MissingPermission")
 @Composable
-private fun DevicesViewModel.DeviceContent() {
+private fun DevicesViewModel.DeviceContent(snackbarHostState: SnackbarHostState) {
     val dialogState = rememberDialogState()
     val controller = LocalController.current
     var isConnect = remember { true }
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
-    val scaffoldState = rememberScaffoldState()
     if (isBluetoothEnabled && isConnect) {
         LaunchedEffect(null) {
             if (hasDevice(
@@ -121,29 +137,35 @@ private fun DevicesViewModel.DeviceContent() {
 
     LaunchedEffect(null) {
         ConnectIdTech.getInstance().autoConnect.onEach {
-            when (it.loadingStatus) {
-                LoadingStatus.Loading -> {
+            when (it) {
+                is DataResponse.DataLoading -> {
                     dialogState.open()
                 }
 
-                LoadingStatus.Success -> {
+                is DataResponse.DataSuccess -> {
                     dialogState.close()
                     if (context is BluetoothActivity) {
                         context.startActivity(Intent(context, PayActivity::class.java))
                     }
                 }
 
-                LoadingStatus.Error -> {
+                is DataResponse.DataError<*, *> -> {
                     dialogState.close()
+                    if (it.errorData is String && it.errorData.isNotEmpty()) {
+                        Toast.makeText(context, it.errorData, Toast.LENGTH_LONG).show()
+                    }
                     coroutineScope.launch {
-                        val snackbarResult = scaffoldState.snackbarHostState.showSnackbar(
-                            message = "Error! An error occurred. Please try again later"
+                        val snackbarResult = snackbarHostState.showSnackbar(
+                            message = "Error! An error occurred. Please try again later", actionLabel = "retry"
                         )
                         when (snackbarResult) {
-                            Dismissed -> {
-
+                            SnackbarResult.ActionPerformed -> {
+                                Handler(Looper.getMainLooper()).post {
+                                    ConnectIdTech.getInstance().autoConnect(context)
+                                }
                             }
-                            ActionPerformed -> {
+
+                            SnackbarResult.Dismissed -> {
 
                             }
                         }

@@ -5,6 +5,8 @@ import android.bluetooth.BluetoothManager
 import android.content.Context
 import android.content.Intent
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
@@ -70,7 +72,7 @@ fun Greeting2(modifier: Modifier = Modifier) {
     val bluetoothAdapter = if (Utils.isAndroidS()) {
         (context.getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager).adapter
     } else {
-        BluetoothAdapter.getDefaultAdapter();
+        @Suppress("DEPRECATION") BluetoothAdapter.getDefaultAdapter()
     }
     deviceViewModel.isBluetoothEnabled = bluetoothAdapter != null && bluetoothAdapter.isEnabled
 
@@ -88,7 +90,9 @@ fun Greeting2(modifier: Modifier = Modifier) {
                 IconButton(onClick = {
                     if (context is PayActivity) {
                         ConnectIdTech.getInstance().disconnect()
-                        context.finish()
+                        Handler(Looper.getMainLooper()).postDelayed({
+                            context.finish()
+                        }, 500)
                     }
                 }) {
                     Icon(imageVector = Icons.Filled.ArrowBackIos, contentDescription = null)

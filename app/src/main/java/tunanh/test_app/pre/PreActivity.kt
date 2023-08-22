@@ -7,22 +7,10 @@ import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ExitToApp
-import androidx.compose.material3.Button
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -67,7 +55,7 @@ fun Greeting(modifier: Modifier = Modifier) {
     Scaffold(modifier = modifier, topBar = {
         TopAppBar(title = { Text(text = stringResource(id = R.string.select_type_connection)) },
             actions = {
-                IconButton(onClick = { (context as PreActivity).finishAfterTransition() }) {
+                IconButton(onClick = { (context as PreActivity).finish() }) {
                     Icon(imageVector = Icons.Filled.ExitToApp, contentDescription = "exit")
                 }
             })

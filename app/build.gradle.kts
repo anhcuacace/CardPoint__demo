@@ -74,7 +74,7 @@ dependencies {
     implementation(libs.datastore.preferences)
 //    implementation(files("/libs/boltsdk-release-3.0.86.aar"))
     implementation(files("libs/database-connection-1.00.jar"))
-    implementation(files("libs/Universal_SDK_1.00.166_os.jar"))
+    implementation(files("libs/Universal_SDK_1.00.164_os.jar"))
     implementation(libs.accompanist.permissions)
     implementation(libs.androidx.navigation.common.ktx)
     implementation(libs.androidx.navigation.runtime.ktx)
