@@ -10,12 +10,9 @@ import com.idtechproducts.device.IDT_Device.context
 import com.idtechproducts.device.ReaderInfo.DEVICE_TYPE
 import com.idtechproducts.device.audiojack.tools.FirmwareUpdateTool
 import com.idtechproducts.device.audiojack.tools.FirmwareUpdateToolMsg
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.delay
+import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.launch
 import timber.log.Timber
 import tunanh.test_app.DataResponse
 import tunanh.test_app.LoadingStatus
@@ -82,7 +79,9 @@ class ConnectIdTech private constructor() : OnReceiverListener, OnReceiverListen
             _autoConnect.value = DataResponse.DataLoading()
             CoroutineScope(Dispatchers.IO).launch {
                 if (device == null) {
-                    initializeReader(context)
+                    withContext(Dispatchers.Main) {
+                        initializeReader(context)
+                    }
                 }
                 device!!.setIDT_Device(fwTool)
 
@@ -97,15 +96,18 @@ class ConnectIdTech private constructor() : OnReceiverListener, OnReceiverListen
                         val rc = device!!.device_enableBLESearch(
                             device!!.device_getDeviceType(),
                             it,
-                            8000
+                            15000
                         )
                         if (rc == 0) {
-                            delay(10000)
+                            delay(120000)
                         } else {
                             _autoConnect.value = DataResponse.DataError(null)
                             return@launch
                         }
                     }
+                }
+                if (_autoConnect.value is DataResponse.DataLoading) {
+                    _autoConnect.value = DataResponse.DataError(null)
                 }
             }
         }
@@ -149,7 +151,7 @@ class ConnectIdTech private constructor() : OnReceiverListener, OnReceiverListen
         val rc = device!!.device_enableBLESearch(
             device!!.device_getDeviceType(),
             address,
-            8000
+            80000
         )
         Timber.e(rc.toString())
         _connectBlueToothState.value = rc
@@ -177,7 +179,7 @@ class ConnectIdTech private constructor() : OnReceiverListener, OnReceiverListen
                 dialogState.close()
                 Toast.makeText(context, "An error occurred, please try again", Toast.LENGTH_LONG).show()
             }
-        }, 12000)
+        }, 120000)
     }
 
     fun setTypeConnectBluetooth(context: Context): Boolean {

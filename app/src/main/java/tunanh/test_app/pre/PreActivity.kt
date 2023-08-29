@@ -48,7 +48,7 @@ class PreActivity : ComponentActivity() {
 @SuppressLint("CoroutineCreationDuringComposition")
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun Greeting(modifier: Modifier = Modifier) {
+private fun Greeting(modifier: Modifier = Modifier) {
     val context = LocalContext.current
     val connect = ConnectIdTech.getInstance()
 
@@ -87,11 +87,11 @@ fun Greeting(modifier: Modifier = Modifier) {
             }) {
                 Text(text = stringResource(R.string.bluetooth))
             }
-            Button(onClick = {
-                connect.connectUsb(context.applicationContext)
-            }) {
-                Text(text = stringResource(R.string.usb))
-            }
+//            Button(onClick = {
+//                connect.connectUsb(context.applicationContext)
+//            }) {
+//                Text(text = stringResource(R.string.usb))
+//            }
         }
         connect.initializeReader(context.applicationContext)
         if (context is PreActivity) {
