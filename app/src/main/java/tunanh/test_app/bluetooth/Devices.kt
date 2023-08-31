@@ -228,7 +228,7 @@ private fun DevicesViewModel.DeviceContent(snackbarHostState: SnackbarHostState)
 
 private suspend fun hasDevice(context: Context, vararg device: PreferenceStore.Preference<String>): Boolean {
     device.forEach {
-        if (context.getPreferenceValue(it)?.isNotEmpty() == true) {
+        if (context.getPreferenceValue(it).isNotEmpty()) {
             return true
         }
     }
@@ -310,11 +310,11 @@ fun DeviceConect(name: String, pref: PreferenceStore.Preference<String>, dialogS
         }.launchIn(this)
     }
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-        Text(name)
-        TextField(value = device, onValueChange = {
+        Text(modifier = Modifier.weight(2f), text = name)
+        TextField(modifier = Modifier.weight(7f), value = device, onValueChange = {
             device = it.trim()
         })
-        IconButton(onClick = {
+        IconButton(modifier = Modifier.width(40.dp), onClick = {
             dialogState.open()
             connect.connectBlueTooth(device, context, dialogState)
         }) {

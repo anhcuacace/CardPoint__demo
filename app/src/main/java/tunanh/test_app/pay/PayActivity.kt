@@ -105,6 +105,7 @@ fun Greeting2(modifier: Modifier = Modifier) {
             val listenerEnabled by canListener.collectAsState()
             val payEnabled by canPay.collectAsState()
             val message by messageState.collectAsState()
+            val message2 by this.message.collectAsState()
             val response by response.collectAsState()
             var amount by remember { mutableStateOf("") }
 
@@ -193,7 +194,7 @@ fun Greeting2(modifier: Modifier = Modifier) {
                         )
                     }
 
-                    if (cardData.cardNumber.isNotEmpty() && cardData.expiry.isNotEmpty()) {
+                    if (cardData.cardNumber.isNotEmpty() && cardData.expiry.isNotEmpty() && listenerEnabled) {
                         Row {
                             Text(text = "amount:")
                             Spacer(modifier = Modifier.width(8.dp))
@@ -218,7 +219,7 @@ fun Greeting2(modifier: Modifier = Modifier) {
                             Text(text = "pay")
                         }
                         Spacer(modifier = Modifier.height(16.dp))
-                        Text(text = message)
+                        Text(text = message2 + message)
                         Text(text = response)
                         Spacer(modifier = Modifier.height(16.dp))
                     }

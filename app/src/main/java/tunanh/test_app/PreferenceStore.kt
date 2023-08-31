@@ -82,10 +82,10 @@ fun <T> Context.getPreferenceState(pref: PreferenceStore.Preference<T>, initial:
     return remember { getPreference(pref) }.collectAsState(initial)
 }
 
-suspend fun <T> Context.getPreferenceValue(pref: PreferenceStore.Preference<T>): T? {
-    val deferred= CompletableDeferred<T?>()
+suspend fun <T> Context.getPreferenceValue(pref: PreferenceStore.Preference<T>): T {
+    val deferred = CompletableDeferred<T>()
     dataStore.edit {
-        deferred.complete(it[pref.key])
+        deferred.complete(it[pref.key] ?: pref.defaultValue)
     }
     return deferred.await()
 }

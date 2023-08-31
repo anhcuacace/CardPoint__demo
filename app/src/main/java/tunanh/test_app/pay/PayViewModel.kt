@@ -13,12 +13,7 @@ import kotlinx.coroutines.launch
 import timber.log.Timber
 import tunanh.test_app.api.ApiResponse
 import tunanh.test_app.api.CallApiRepository
-import tunanh.test_app.api.model.AccountRequest
-import tunanh.test_app.api.model.AuthRequest
-import tunanh.test_app.api.model.AuthResponse
-import tunanh.test_app.api.model.CaptureRequest
-import tunanh.test_app.api.model.CaptureResponse
-import tunanh.test_app.api.model.TokenResponse
+import tunanh.test_app.api.model.*
 import tunanh.test_app.pre.ConnectIdTech
 
 class PayViewModel : ViewModel() {
@@ -44,6 +39,8 @@ class PayViewModel : ViewModel() {
 
     val autoConnectState = connect.autoConnect
 
+    val message = connect.message
+
     private val repository by lazy { CallApiRepository.getInstance() }
 
 
@@ -56,7 +53,9 @@ class PayViewModel : ViewModel() {
 
     fun listener(context: Context) {
         _response.value = ""
+        _cardDataState.value = PayModel("", "", "")
         connect.listenerIdTech(context, _canListener)
+//        connect.setSwipeListener(_cardDataState)
     }
 
     private suspend fun <T> loadData(
