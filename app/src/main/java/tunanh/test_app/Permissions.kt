@@ -19,27 +19,31 @@ import androidx.compose.ui.unit.dp
 import com.google.accompanist.permissions.ExperimentalPermissionsApi
 import com.google.accompanist.permissions.rememberMultiplePermissionsState
 import tunanh.test_app.ui.theme.Typography
+object Permissions {
+    val permissionsBluetooth
+        get() = mutableListOf<String>().apply {
+            if (Utils.isAndroidS()) {
+                add(android.Manifest.permission.BLUETOOTH_SCAN)
+                add(android.Manifest.permission.BLUETOOTH_CONNECT)
+                if (Utils.isTIRAMISU()) {
+                    add(android.Manifest.permission.POST_NOTIFICATIONS)
+                }
+            } else {
+                add(android.Manifest.permission.BLUETOOTH)
+                add(android.Manifest.permission.BLUETOOTH_ADMIN)
+            }
+        }
 
+
+}
 @OptIn(ExperimentalPermissionsApi::class)
 @Composable
 fun RequiresBluetoothPermission(
     content: @Composable () -> Unit
 ) {
-    val permissions = mutableListOf<String>()
 
-    if (Utils.isAndroidS()) {
-        permissions.add(android.Manifest.permission.BLUETOOTH_SCAN)
-        permissions.add(android.Manifest.permission.BLUETOOTH_CONNECT)
-        if (Utils.isTIRAMISU()) {
-            permissions.add(android.Manifest.permission.POST_NOTIFICATIONS)
-        }
-    } else {
-        permissions.add(android.Manifest.permission.BLUETOOTH)
-        permissions.add(android.Manifest.permission.BLUETOOTH_ADMIN)
-    }
-//    permissions.add(android.Manifest.permission.RECORD_AUDIO)
 
-    val bluetoothPermission = rememberMultiplePermissionsState(permissions)
+    val bluetoothPermission = rememberMultiplePermissionsState(Permissions.permissionsBluetooth)
 
     if (bluetoothPermission.allPermissionsGranted) {
         content()

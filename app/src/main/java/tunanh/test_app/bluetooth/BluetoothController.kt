@@ -130,11 +130,11 @@ class BluetoothController(private val context: Context) {
     val bluetoothEnabled: Boolean
         get() = bluetoothAdapter?.isEnabled ?: false
 
-//    val pairedDevices: Set<BluetoothDevice>
-//        get() = bluetoothAdapter?.bondedDevices ?: emptySet()
+    val pairedDevices: Set<BluetoothDevice>
+        get() = bluetoothAdapter?.bondedDevices ?: emptySet()
 
-//    val isScanning: Boolean
-//        get() = bluetoothAdapter?.isDiscovering ?: false
+    val isScanning: Boolean
+        get() = bluetoothAdapter?.isDiscovering ?: false
 
     fun registerListener(listener: Listener): Listener {
         deviceListener.add(listener)

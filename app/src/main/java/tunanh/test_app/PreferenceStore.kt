@@ -1,9 +1,18 @@
 package tunanh.test_app
 
 import android.content.Context
-import androidx.compose.runtime.*
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.MutableState
+import androidx.compose.runtime.State
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.platform.LocalContext
-import androidx.datastore.preferences.core.*
+import androidx.datastore.preferences.core.Preferences
+import androidx.datastore.preferences.core.booleanPreferencesKey
+import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.preferencesOf
+import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.flow.Flow
@@ -27,9 +36,9 @@ class PreferenceStore {
         // Connection
         val AUTO_CONNECT = booleanPreferencesKey("auto_connect") defaultsTo false
         val SHOW_UNNAMED = booleanPreferencesKey("show_unnamed") defaultsTo false
-        val DEVICE_1 = stringPreferencesKey("device_1") defaultsTo "IDTECH-VP3300-93657"
-        val DEVICE_2 = stringPreferencesKey("device_2") defaultsTo ""
-        val DEVICE_3 = stringPreferencesKey("device_3") defaultsTo ""
+        val DEVICE = stringPreferencesKey("device") defaultsTo ""
+//        val DEVICE_2 = stringPreferencesKey("device_2") defaultsTo ""
+//        val DEVICE_3 = stringPreferencesKey("device_3") defaultsTo ""
 //        val SEND_DELAY = floatPreferencesKey("send_delay") defaultsTo 10f
 //        val KEYBOARD_LAYOUT = intPreferencesKey("keyboard_layout") defaultsTo 0
 //        val EXTRA_KEYS = intPreferencesKey("extra_keys") defaultsTo 0 // None

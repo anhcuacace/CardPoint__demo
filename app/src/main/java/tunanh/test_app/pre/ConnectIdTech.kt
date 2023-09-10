@@ -1,25 +1,42 @@
 package tunanh.test_app.pre
 
 import android.content.Context
+import android.os.CountDownTimer
 import android.os.Looper
 import android.widget.Toast
 import com.dbconnection.dblibrarybeta.ProfileManager
 import com.dbconnection.dblibrarybeta.RESTResponse
-import com.idtechproducts.device.*
+import com.idtechproducts.device.CardData
+import com.idtechproducts.device.Common
+import com.idtechproducts.device.ErrorCode
+import com.idtechproducts.device.IDTEMVData
+import com.idtechproducts.device.IDTMSRData
 import com.idtechproducts.device.IDT_Device.context
+import com.idtechproducts.device.IDT_VP3300
+import com.idtechproducts.device.OnReceiverListener
+import com.idtechproducts.device.OnReceiverListenerPINRequest
 import com.idtechproducts.device.ReaderInfo.DEVICE_TYPE
+import com.idtechproducts.device.ResDataStruct
+import com.idtechproducts.device.StructConfigParameters
 import com.idtechproducts.device.audiojack.tools.FirmwareUpdateTool
 import com.idtechproducts.device.audiojack.tools.FirmwareUpdateToolMsg
-import kotlinx.coroutines.*
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.launchIn
+import kotlinx.coroutines.flow.onEach
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import timber.log.Timber
 import tunanh.test_app.DataResponse
 import tunanh.test_app.LoadingStatus
-import tunanh.test_app.PreferenceStore
+import tunanh.test_app.PreferenceStore.Companion.DEVICE
 import tunanh.test_app.extention.ifNullOrEmpty
 import tunanh.test_app.getPreferenceValue
 import tunanh.test_app.pay.PayModel
+import tunanh.test_app.setPreference
 import tunanh.test_app.ui.DialogState
 
 
@@ -33,10 +50,16 @@ class ConnectIdTech private constructor() : OnReceiverListener, OnReceiverListen
         }
 
         private const val emvTimeout = 90
+
+        private const val TimeOutConnect = 120
     }
 
-    private val _autoConnect = MutableStateFlow<DataResponse<Boolean>>(DataResponse.DataIdle())
-    val autoConnect: StateFlow<DataResponse<Boolean>> = _autoConnect
+    private val _timeWaiting = MutableStateFlow(-1)
+
+    val timeWaiting: StateFlow<Int> = _timeWaiting
+
+//    private val _autoConnect = MutableStateFlow<DataResponse<Boolean>>(DataResponse.DataIdle())
+//    val autoConnect: StateFlow<DataResponse<Boolean>> = _autoConnect
 
     private val _message = MutableStateFlow("")
     val message: StateFlow<String> = _message
@@ -44,45 +67,50 @@ class ConnectIdTech private constructor() : OnReceiverListener, OnReceiverListen
     private var device: IDT_VP3300? = null
     private var fwTool: FirmwareUpdateTool? = null
     private val profileManager: ProfileManager = ProfileManager(this)
-    private val _availableConnect = MutableStateFlow(false)
-    val availableConnect: StateFlow<Boolean> = _availableConnect
+    private val _availableConnect = MutableStateFlow<DataResponse<Boolean>>(DataResponse.DataIdle())
+    val availableConnect: StateFlow<DataResponse<Boolean>> = _availableConnect
 
     val disconnectState = MutableStateFlow(false)
 
 
-    private val _connectBlueToothState = MutableStateFlow(-1)
-    val connectBlueToothState: StateFlow<Int> = _connectBlueToothState
-
     private var _cardDataState: MutableStateFlow<PayModel>? = null
 
-    private val listDevice: suspend (Context) -> List<String> = {
-        val list = arrayListOf<String>()
-        it.getPreferenceValue(PreferenceStore.DEVICE_1).let { d ->
-            if (d.isNotEmpty()) {
-                list.add(d)
-            }
-        }
-        it.getPreferenceValue(PreferenceStore.DEVICE_2).let { d ->
-            if (d.isNotEmpty()) {
-                list.add(d)
-            }
-        }
-        it.getPreferenceValue(PreferenceStore.DEVICE_3).let { d ->
-            if (d.isNotEmpty()) {
-                list.add(d)
-            }
-        }
-        list
-    }
+//    private val listDevice: suspend (Context) -> List<String> = {
+//        val list = arrayListOf<String>()
+//        it.getPreferenceValue(PreferenceStore.DEVICE_1).let { d ->
+//            if (d.isNotEmpty()) {
+//                list.add(d)
+//            }
+//        }
+//        it.getPreferenceValue(PreferenceStore.DEVICE_2).let { d ->
+//            if (d.isNotEmpty()) {
+//                list.add(d)
+//            }
+//        }
+//        it.getPreferenceValue(PreferenceStore.DEVICE_3).let { d ->
+//            if (d.isNotEmpty()) {
+//                list.add(d)
+//            }
+//        }
+//        list
+//    }
 
     fun initState() {
-        _autoConnect.value = DataResponse.DataIdle()
+        _availableConnect.value = DataResponse.DataIdle()
     }
 
+    @Synchronized
     fun autoConnect(context: Context) {
-        if (_autoConnect.value !is DataResponse.DataLoading) {
-            _autoConnect.value = DataResponse.DataLoading()
+        if (_availableConnect.value !is DataResponse.DataLoading) {
+
+            _availableConnect.value = DataResponse.DataLoading()
             CoroutineScope(Dispatchers.IO).launch {
+                val name = context.getPreferenceValue(DEVICE)
+                Timber.e(name)
+                if (name.isEmpty()) {
+                    _availableConnect.value = DataResponse.DataIdle()
+                    return@launch
+                }
                 if (device == null) {
                     withContext(Dispatchers.Main) {
                         initializeReader(context)
@@ -90,54 +118,99 @@ class ConnectIdTech private constructor() : OnReceiverListener, OnReceiverListen
                 }
                 device!!.setIDT_Device(fwTool)
 
-                listDevice(context).forEach {
-                    if ((_autoConnect.value !is DataResponse.DataSuccess) || _autoConnect.value.loadingStatus == LoadingStatus.Error) {
-                        if (device!!.device_connect()) {
-                            if (device!!.device_disconnectBLE()) {
-                                _autoConnect.value = DataResponse.DataError("disconnected")
-                                return@launch
-                            }
-                        }
-                        val rc = device!!.device_enableBLESearch(
-                            device!!.device_getDeviceType(),
-                            it,
-                            15000
-                        )
-                        if (rc == 0) {
-                            delay(120000)
-                        } else {
-                            _autoConnect.value = DataResponse.DataError(null)
+
+                delay(1000)
+                if ((_availableConnect.value !is DataResponse.DataSuccess) || _availableConnect.value.loadingStatus == LoadingStatus.Error) {
+                    if (device!!.device_connect()) {
+                        if (device!!.device_disconnectBLE()) {
+                            _availableConnect.value = DataResponse.DataError("disconnected")
                             return@launch
                         }
                     }
+                    val rc = device!!.device_enableBLESearch(
+                        device!!.device_getDeviceType(),
+                        name,
+                        15000
+                    )
+
+                    if (rc == 0) {
+                        _timeWaiting.value = TimeOutConnect
+
+                        withContext(Dispatchers.Main) {
+                            val countDownTimer =
+                                object : CountDownTimer(TimeOutConnect * 1000L, 1000) {
+                                    override fun onTick(millisUntilFinished: Long) {
+                                        _timeWaiting.value = (millisUntilFinished / 1000).toInt()
+                                        Timber.e("countdown $millisUntilFinished")
+                                    }
+
+                                    override fun onFinish() {
+                                        if (_availableConnect.value is DataResponse.DataLoading) {
+                                            _availableConnect.value = DataResponse.DataError(null)
+                                        }
+                                    }
+                                }
+                            _availableConnect.onEach {
+                                if (it is DataResponse.DataSuccess || it is DataResponse.DataError<*, *>) {
+                                    countDownTimer.cancel()
+                                }
+                            }.launchIn(this)
+                            countDownTimer.start()
+                        }
+
+
+                    } else {
+                        _availableConnect.value = DataResponse.DataError(null)
+                        return@launch
+                    }
                 }
-                if (_autoConnect.value is DataResponse.DataLoading) {
-                    _autoConnect.value = DataResponse.DataError(null)
-                }
+
+//                listDevice(context).forEach {
+//                    if ((_autoConnect.value !is DataResponse.DataSuccess) || _autoConnect.value.loadingStatus == LoadingStatus.Error) {
+//                        if (device!!.device_connect()) {
+//                            if (device!!.device_disconnectBLE()) {
+//                                _autoConnect.value = DataResponse.DataError("disconnected")
+//                                return@launch
+//                            }
+//                        }
+//                        val rc = device!!.device_enableBLESearch(
+//                            device!!.device_getDeviceType(),
+//                            it,
+//                            15000
+//                        )
+//                        if (rc == 0) {
+//                            delay(120000)
+//                        } else {
+//                            _autoConnect.value = DataResponse.DataError(null)
+//                            return@launch
+//                        }
+//                    }
+//                }
+
             }
         }
     }
 
-    fun connectUsb(context: Context) {
-        _availableConnect.value = false
-        Timber.e("connectUsb")
-        if (device == null) {
-            initializeReader(context)
-        }
-        if (device!!.device_setDeviceType(DEVICE_TYPE.DEVICE_VP3300_BT_USB))
-            Toast.makeText(
-                context,
-                "VP3300 Bluetooth (USB) is selected",
-                Toast.LENGTH_SHORT
-            ).show()
-        else Toast.makeText(
-            context,
-            "Failed. Please disconnect first.",
-            Toast.LENGTH_SHORT
-        ).show()
-        device!!.setIDT_Device(fwTool)
-        device!!.registerListen()
-    }
+//    fun connectUsb(context: Context) {
+//        _availableConnect.value = false
+//        Timber.e("connectUsb")
+//        if (device == null) {
+//            initializeReader(context)
+//        }
+//        if (device!!.device_setDeviceType(DEVICE_TYPE.DEVICE_VP3300_BT_USB))
+//            Toast.makeText(
+//                context,
+//                "VP3300 Bluetooth (USB) is selected",
+//                Toast.LENGTH_SHORT
+//            ).show()
+//        else Toast.makeText(
+//            context,
+//            "Failed. Please disconnect first.",
+//            Toast.LENGTH_SHORT
+//        ).show()
+//        device!!.setIDT_Device(fwTool)
+//        device!!.registerListen()
+//    }
 
     fun isConnected() = device?.device_isConnected() ?: false
 
@@ -147,19 +220,89 @@ class ConnectIdTech private constructor() : OnReceiverListener, OnReceiverListen
     }
 
     fun connectBlueTooth(address: String, context: Context, dialogState: DialogState) {
-        _availableConnect.value = false
-        timeoutConnect(dialogState, context)
-        if (device == null) {
-            initializeReader(context)
+        if (availableConnect.value !is DataResponse.DataLoading) {
+            _availableConnect.value = DataResponse.DataLoading()
+            if (device == null) {
+                initializeReader(context)
+            }
+            device!!.setIDT_Device(fwTool)
+            val rc = device!!.device_enableBLESearch(
+                device!!.device_getDeviceType(),
+                address,
+                80000
+            )
+
+            Timber.e(rc.toString())
+            if (rc == 0) {
+                dialogState.open()
+                _timeWaiting.value = TimeOutConnect
+                CoroutineScope(Dispatchers.Main).launch {
+
+                    val countDownTimer = object : CountDownTimer(TimeOutConnect * 1000L, 1000) {
+                        override fun onTick(millisUntilFinished: Long) {
+                            _timeWaiting.value = (millisUntilFinished / 1000).toInt()
+                        }
+
+                        override fun onFinish() {
+                            if (dialogState.openState && device?.device_isConnected() == false) {
+                                dialogState.close()
+                                Toast.makeText(
+                                    context,
+                                    "An error occurred, please try again",
+                                    Toast.LENGTH_LONG
+                                )
+                                    .show()
+                            }
+                        }
+
+                    }
+                    _availableConnect.onEach {
+                        if (it is DataResponse.DataSuccess || it is DataResponse.DataError<*, *>) {
+                            if (it is DataResponse.DataSuccess) {
+                                context.setPreference(DEVICE, address)
+                            }
+                            countDownTimer.cancel()
+                        }
+                    }.launchIn(this)
+                    countDownTimer.start()
+                }
+
+            } else {
+                dialogState.close()
+                _availableConnect.value = DataResponse.DataError(rc)
+                when (rc) {
+                    1 -> Toast.makeText(context, "Invalid DEVICE_TYPE", Toast.LENGTH_SHORT)
+                        .show()
+
+                    2 -> Toast.makeText(
+                        context,
+                        "Bluetooth LE is not supported on this device",
+                        Toast.LENGTH_SHORT
+                    ).show()
+
+                    3 -> Toast.makeText(
+                        context,
+                        "Bluetooth LE is not available",
+                        Toast.LENGTH_SHORT
+                    ).show()
+
+                    4 -> Toast.makeText(
+                        context,
+                        "Bluetooth LE is not enabled",
+                        Toast.LENGTH_SHORT
+                    ).show()
+
+                    5 -> Toast.makeText(
+                        context,
+                        "Device not paired. Please pair first",
+                        Toast.LENGTH_SHORT
+                    ).show()
+                }
+            }
         }
-        device!!.setIDT_Device(fwTool)
-        val rc = device!!.device_enableBLESearch(
-            device!!.device_getDeviceType(),
-            address,
-            80000
-        )
-        Timber.e(rc.toString())
-        _connectBlueToothState.value = rc
+
+//        timeoutConnect(dialogState, context)
+
 //        CoroutineScope(Dispatchers.Main).launch{
 //            do {
 //                delay(500)
@@ -182,7 +325,8 @@ class ConnectIdTech private constructor() : OnReceiverListener, OnReceiverListen
         android.os.Handler(Looper.getMainLooper()).postDelayed({
             if (dialogState.openState && device?.device_isConnected() == false) {
                 dialogState.close()
-                Toast.makeText(context, "An error occurred, please try again", Toast.LENGTH_LONG).show()
+                Toast.makeText(context, "An error occurred, please try again", Toast.LENGTH_LONG)
+                    .show()
             }
         }, 120000)
     }
@@ -206,8 +350,8 @@ class ConnectIdTech private constructor() : OnReceiverListener, OnReceiverListen
     }
 
     private var canListener = MutableStateFlow(true)
-    fun listenerIdTech(context: Context, _canListener: MutableStateFlow<Boolean>) {
-        this.canListener = _canListener
+    fun listenerIdTech(context: Context, canListener: MutableStateFlow<Boolean>) {
+        this.canListener = canListener
         _message.value = ""
         if (device == null) {
             initializeReader(context)
@@ -236,19 +380,19 @@ class ConnectIdTech private constructor() : OnReceiverListener, OnReceiverListen
                 else -> {
                     _message.value = "Cannot swipe/tap/insert card\n"
                     _message.value += "Status: " + device!!.device_getResponseCodeString(ret) + ""
-                    canListener.value = true
+                    this.canListener.value = true
                 }
             }
             android.os.Handler(Looper.getMainLooper()).postDelayed({
-                if (!canListener.value) {
-                    canListener.value = true
+                if (!this.canListener.value) {
+                    this.canListener.value = true
                 }
             }, emvTimeout * 1000L)
 
         }
     }
 
-    private fun releaseSDK() {
+    fun releaseSDK() {
         if (device != null) {
             if (device!!.device_getDeviceType() != DEVICE_TYPE.DEVICE_VP3300_COM) device!!.unregisterListen()
             device!!.release()
@@ -262,7 +406,7 @@ class ConnectIdTech private constructor() : OnReceiverListener, OnReceiverListen
             handleMSRData()
             return
         }
-        _cardDataState?.value = PayModel("", "", "")
+//        _cardDataState?.value = PayModel("", "", "")
     }
 
     private var timesHandle = 0
@@ -275,13 +419,19 @@ class ConnectIdTech private constructor() : OnReceiverListener, OnReceiverListen
             return
         }
         val cardNumber =
-            unencryptedTags?.let { Common.getHexStringFromBytes(it["5A"] ?: byteArrayOf()) }.ifNullOrEmpty {
-                track2?.substring(0, track2.indexOf('='))?.let {
+            unencryptedTags?.let { Common.getHexStringFromBytes(it["5A"] ?: byteArrayOf()) }
+                .ifNullOrEmpty {
                     var output = ""
-                    for (element in it) {
-                        val c: Char = element
-                        if (Character.isDigit(c)) {
-                            output += c
+                    if (track2?.indexOf('=') != -1) {
+                        track2?.substring(0, track2.indexOf('='))?.let {
+
+                            for (element in it) {
+                                val c: Char = element
+                                if (Character.isDigit(c)) {
+                                    output += c
+                                }
+                            }
+
                         }
                     }
                     output
@@ -297,7 +447,7 @@ class ConnectIdTech private constructor() : OnReceiverListener, OnReceiverListen
                         output
                     } ?: ""
                 }
-            }
+
 
         val expirationDate: String =
             unencryptedTags?.let {
@@ -323,11 +473,13 @@ class ConnectIdTech private constructor() : OnReceiverListener, OnReceiverListen
                 } else ""
             }
         Timber.tag("tunanh").e(Common.getHexStringFromBytes(cardData))
-        val name = cardData?.let {
-            extractCardholderName(it)
-        }.ifNullOrEmpty {
-            track1?.substring(track1.indexOf("^") + 1, track1.lastIndexOf("^"))?.trim() ?: "null"
-        }
+        val name = track1?.substring(track1.indexOf("^") + 1, track1.lastIndexOf("^"))?.trim()
+            .ifNullOrEmpty {
+                cardData?.let {
+                    CardData(it)
+                    extractCardholderName(it)
+                } ?: "null"
+            }
         _cardDataState?.value = PayModel(cardNumber, expirationDate, name)
     }
 
@@ -418,20 +570,32 @@ class ConnectIdTech private constructor() : OnReceiverListener, OnReceiverListen
 //			byte[] authResponseCode = new byte[]{(byte)0x30, 0x30};
         val authResponseCode = ByteArray(2)
         System.arraycopy(tag8A, 0, authResponseCode, 0, 2)
-        val issuerAuthData = byteArrayOf(0x11.toByte(), 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88.toByte(), 0x30, 0x30)
+        val issuerAuthData = byteArrayOf(
+            0x11.toByte(),
+            0x22,
+            0x33,
+            0x44,
+            0x55,
+            0x66,
+            0x77,
+            0x88.toByte(),
+            0x30,
+            0x30
+        )
         val tlvScripts: ByteArray? = null
         val value: ByteArray? = null
-        return device!!.emv_completeTransaction(false, authResponseCode, issuerAuthData, tlvScripts, value)
+        return device!!.emv_completeTransaction(
+            false,
+            authResponseCode,
+            issuerAuthData,
+            tlvScripts,
+            value
+        )
     }
 
 
     override fun deviceConnected() {
-
-        if (_autoConnect.value is DataResponse.DataLoading) {
-            _autoConnect.value = DataResponse.DataSuccess(true)
-        } else {
-            _availableConnect.value = true
-        }
+        _availableConnect.value = DataResponse.DataSuccess(true)
         Timber.e("connected")
     }
 

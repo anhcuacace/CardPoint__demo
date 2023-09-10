@@ -13,15 +13,20 @@ import kotlinx.coroutines.launch
 import timber.log.Timber
 import tunanh.test_app.api.ApiResponse
 import tunanh.test_app.api.CallApiRepository
-import tunanh.test_app.api.model.*
+import tunanh.test_app.api.model.AccountRequest
+import tunanh.test_app.api.model.AuthRequest
+import tunanh.test_app.api.model.AuthResponse
+import tunanh.test_app.api.model.CaptureRequest
+import tunanh.test_app.api.model.CaptureResponse
+import tunanh.test_app.api.model.TokenResponse
 import tunanh.test_app.pre.ConnectIdTech
 
 class PayViewModel : ViewModel() {
 
     private val _cardDataState = MutableStateFlow(PayModel("", "", ""))
+    private val payModel = MutableStateFlow(PayModel("", "", ""))
 
-
-    val cardDataState: StateFlow<PayModel> = _cardDataState
+    val cardDataState: StateFlow<PayModel> = payModel
     private val connect = ConnectIdTech.getInstance()
     private val _canListener = MutableStateFlow(true)
     val canListener: StateFlow<Boolean> = _canListener
@@ -37,7 +42,7 @@ class PayViewModel : ViewModel() {
 
     val disconnectState = connect.disconnectState
 
-    val autoConnectState = connect.autoConnect
+    val autoConnectState = connect.availableConnect
 
     val message = connect.message
 
@@ -110,6 +115,7 @@ class PayViewModel : ViewModel() {
     fun pay(amount: String) {
         canPay.value = false
         this.amount = amount
+        _cardDataState.value = payModel.value
         viewModelScope.launch {
 //            val data = tokenState.value
 //            if (data is ApiResponse.DataSuccess) {
@@ -148,14 +154,19 @@ class PayViewModel : ViewModel() {
         return repository.putCapture(CaptureRequest(amount, body.merchid, body.retref))
     }
 
+    fun updateCardData(data: PayModel) {
+        payModel.value = data
+    }
+
 
     init {
         connect.setSwipeListener(_cardDataState)
         var error = false
-        cardDataState.onEach {
+        _cardDataState.onEach {
             error = false
             Timber.e(it.toString())
             _canListener.value = true
+            updateCardData(it)
             if (it.cardNumber.isNotEmpty()) {
                 loadData(tokenState) { getToken() }
             }

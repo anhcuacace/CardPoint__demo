@@ -20,6 +20,7 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.launch
+import tunanh.test_app.DataResponse
 import tunanh.test_app.R
 import tunanh.test_app.bluetooth.BluetoothActivity
 import tunanh.test_app.pay.PayActivity
@@ -97,7 +98,7 @@ private fun Greeting(modifier: Modifier = Modifier) {
         if (context is PreActivity) {
             context.lifecycleScope.launch {
                 connect.availableConnect.collect {
-                    if (it) {
+                    if (it is DataResponse.DataSuccess) {
                         Toast.makeText(context, "connected", Toast.LENGTH_SHORT).show()
                         context.startActivity(Intent(context, PayActivity::class.java))
                         context.finish()

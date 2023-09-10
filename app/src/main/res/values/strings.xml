@@ -14,7 +14,8 @@
     <string name="location_enable">Location needs to be enabled on your device.</string>
     <string name="open_location_settings">Open Location Settings</string>
     <string name="connecting">Connecting…</string>
-    <string name="connect_help">If you are unable to connect, unpair the device on both sides then try connecting to it again from within the app.</string>
+    <string name="connect_help">If you are unable to connect, unpair the device on both sides then try connecting to it again from within the app.cancel after %d seconds</string>
+
     <string name="info">Info</string>
     <string name="name">Name</string>
     <string name="mac_address">MAC-Address</string>

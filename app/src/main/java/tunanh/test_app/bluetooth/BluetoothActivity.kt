@@ -13,10 +13,10 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.lifecycle.Lifecycle
+import com.google.accompanist.permissions.ExperimentalPermissionsApi
 import tunanh.test_app.ComposableLifecycle
 import tunanh.test_app.NavGraph
 import tunanh.test_app.RequiresBluetoothPermission
-import tunanh.test_app.pre.ConnectIdTech
 import tunanh.test_app.ui.theme.Test_appTheme
 
 val LocalController = staticCompositionLocalOf<BluetoothController> {
@@ -38,9 +38,10 @@ class BluetoothActivity : ComponentActivity() {
         }
     }
 
+    @OptIn(ExperimentalPermissionsApi::class)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        ConnectIdTech.getInstance().initState()
+
 
 //        lifecycleScope.launch {
 //
@@ -52,6 +53,7 @@ class BluetoothActivity : ComponentActivity() {
 //        }
 
         setContent {
+
 
             Surface(Modifier.fillMaxSize()) {
                 Test_appTheme {

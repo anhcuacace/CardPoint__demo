@@ -13,9 +13,13 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.LazyListScope
+import androidx.compose.foundation.lazy.items
+import androidx.compose.material.ExperimentalMaterialApi
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
+import androidx.compose.material.pullrefresh.PullRefreshIndicator
+import androidx.compose.material.pullrefresh.pullRefresh
+import androidx.compose.material.pullrefresh.rememberPullRefreshState
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -44,7 +48,7 @@ import kotlin.system.exitProcess
 @Composable
 fun Devices() = with(viewModel<DevicesViewModel>()) {
     val scrollBehavior = TopAppBarDefaults.pinnedScrollBehavior()
-    val snackbarHostState = remember { SnackbarHostState() }
+    val snackBarHostState = remember { SnackbarHostState() }
 
 //    val controller = LocalController.current
 //    val context = LocalContext.current
@@ -64,9 +68,10 @@ fun Devices() = with(viewModel<DevicesViewModel>()) {
                 scrollBehavior = scrollBehavior
             )
         }, snackbarHost = {
-            SnackbarHost(snackbarHostState) {
+            SnackbarHost(snackBarHostState) {
                 Snackbar(
-                    modifier = Modifier.border(2.dp, MaterialTheme.colorScheme.secondary)
+                    modifier = Modifier
+                        .border(2.dp, MaterialTheme.colorScheme.secondary)
                         .padding(12.dp),
                     action = {
                         TextButton(onClick = {
@@ -81,45 +86,52 @@ fun Devices() = with(viewModel<DevicesViewModel>()) {
             }
         }) { padding ->
         Box(Modifier.padding(padding)) {
-            DeviceContent(snackbarHostState)
+            DeviceContent(snackBarHostState)
         }
     }
 }
 
 
-
-@SuppressLint("MissingPermission")
+@OptIn(ExperimentalMaterialApi::class)
+@SuppressLint("MissingPermission", "CoroutineCreationDuringComposition")
 @Composable
-private fun DevicesViewModel.DeviceContent(snackbarHostState: SnackbarHostState) {
+private fun DevicesViewModel.DeviceContent(snackBarHostState: SnackbarHostState) {
     val dialogState = rememberDialogState()
     val controller = LocalController.current
-    var isConnect = remember { true }
+//    var isConnect = remember { true }
     val context = LocalContext.current
-    val coroutineScope = rememberCoroutineScope()
-    if (isBluetoothEnabled && isConnect) {
-        LaunchedEffect(null) {
-            if (hasDevice(
-                    context,
-                    PreferenceStore.DEVICE_1,
-                    PreferenceStore.DEVICE_2,
-                    PreferenceStore.DEVICE_3
-                )
-            ) {
-                ConnectIdTech.getInstance().autoConnect(context.applicationContext)
-                isConnect = false
 
-            } else {
-                Timber.e("")
-            }
-        }
-    }
+//    if (isBluetoothEnabled && isConnect) {
+//        LaunchedEffect(null) {
+//            if (hasDevice(
+//                    context,
+//                    PreferenceStore.DEVICE_1,
+//                    PreferenceStore.DEVICE_2,
+//                    PreferenceStore.DEVICE_3
+//                )
+//            ) {
+//                ConnectIdTech.getInstance().autoConnect(context.applicationContext)
+//                isConnect = false
+//
+//            } else {
+//                Timber.e("")
+//            }
+//        }
+//    }
+    val time by ConnectIdTech.getInstance().timeWaiting.collectAsState()
+
+    LoadingDialog(
+        dialogState,
+        stringResource(R.string.connecting),
+        stringResource(R.string.connect_help, time)
+    )
     DisposableEffect(controller) {
-//        isScanning = controller.isScanning
+        isScanning = controller.isScanning
         isBluetoothEnabled = controller.bluetoothEnabled
 
-//        if (pairedDevices.isEmpty()) {
-//            pairedDevices.addAll(controller.pairedDevices)
-//        }
+        if (pairedDevices.isEmpty()) {
+            pairedDevices.addAll(controller.pairedDevices)
+        }
 
         val listener = controller.registerListener { _, state ->
             dialogState.openState = when (state) {
@@ -135,8 +147,8 @@ private fun DevicesViewModel.DeviceContent(snackbarHostState: SnackbarHostState)
     }
 
 
-    LaunchedEffect(null) {
-        ConnectIdTech.getInstance().autoConnect.onEach {
+    rememberCoroutineScope().launch {
+        ConnectIdTech.getInstance().availableConnect.onEach {
             when (it) {
                 is DataResponse.DataLoading -> {
                     dialogState.open()
@@ -144,9 +156,7 @@ private fun DevicesViewModel.DeviceContent(snackbarHostState: SnackbarHostState)
 
                 is DataResponse.DataSuccess -> {
                     dialogState.close()
-                    if (context is BluetoothActivity) {
-                        context.startActivity(Intent(context, PayActivity::class.java))
-                    }
+                    gotoPayActivity(context)
                 }
 
                 is DataResponse.DataError<*, *> -> {
@@ -154,22 +164,24 @@ private fun DevicesViewModel.DeviceContent(snackbarHostState: SnackbarHostState)
                     if (it.errorData is String && it.errorData.isNotEmpty()) {
                         Toast.makeText(context, it.errorData, Toast.LENGTH_LONG).show()
                     }
-                    coroutineScope.launch {
-                        val snackbarResult = snackbarHostState.showSnackbar(
-                            message = "Error! An error occurred. Please try again later", actionLabel = "retry"
-                        )
-                        when (snackbarResult) {
-                            SnackbarResult.ActionPerformed -> {
-                                Handler(Looper.getMainLooper()).post {
-                                    ConnectIdTech.getInstance().autoConnect(context)
-                                }
-                            }
 
-                            SnackbarResult.Dismissed -> {
-
+                    val snackbarResult = snackBarHostState.showSnackbar(
+                        message = "if the device is not found please swipe down and try again",
+                        actionLabel = "retry",
+                        duration = SnackbarDuration.Long
+                    )
+                    when (snackbarResult) {
+                        SnackbarResult.ActionPerformed -> {
+                            Handler(Looper.getMainLooper()).post {
+                                refresh(controller)
                             }
                         }
+
+                        SnackbarResult.Dismissed -> {
+
+                        }
                     }
+
 //                    Snackbar(modifier = Modifier.padding(8.dp),
 //                        action = {
 //
@@ -182,147 +194,143 @@ private fun DevicesViewModel.DeviceContent(snackbarHostState: SnackbarHostState)
 //                    ConnectIdTech.getInstance().autoConnect(LocalContext.current)
                 }
 
-                else -> {}
+                else -> {
+                    dialogState.close()
+                }
             }
         }.launchIn(this)
     }
 
-    LoadingDialog(
-        dialogState,
-        stringResource(R.string.connecting),
-        stringResource(R.string.connect_help)
-    )
 
     BroadcastListener()
-    LazyColumn(
-        Modifier
-            .fillMaxSize()
-            .padding(12.dp, 0.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp)
-    ) {
-        if (!isBluetoothEnabled) {
-            item {
-                BluetoothDisabledCard()
-            }
-        } else {
-            autoConnect(dialogState)
-        }
-    }
-
-
-//    val pullRefreshState =
-//        rememberPullRefreshState(isRefreshing, { refresh(controller) })
-//
-//    Box(Modifier.pullRefresh(pullRefreshState)) {
-//        DeviceList(dialogState)
-//
-//        PullRefreshIndicator(
-//            isRefreshing,
-//            pullRefreshState,
-//            Modifier.align(Alignment.TopCenter),
-//            backgroundColor = MaterialTheme.colorScheme.surfaceVariant,
-//            contentColor = MaterialTheme.colorScheme.primary
-//        )
+//    LazyColumn(
+//        Modifier
+//            .fillMaxSize()
+//            .padding(12.dp, 0.dp),
+//        verticalArrangement = Arrangement.spacedBy(8.dp)
+//    ) {
+//        if (!isBluetoothEnabled) {
+//            item {
+//                BluetoothDisabledCard()
+//            }
+//        } else {
+//            autoConnect(dialogState)
+//        }
 //    }
+
+
+    val pullRefreshState =
+        rememberPullRefreshState(isRefreshing, { refresh(controller) })
+
+    Box(Modifier.pullRefresh(pullRefreshState)) {
+        DeviceList(dialogState)
+
+        PullRefreshIndicator(
+            isRefreshing,
+            pullRefreshState,
+            Modifier.align(Alignment.TopCenter),
+            backgroundColor = MaterialTheme.colorScheme.surfaceVariant,
+            contentColor = MaterialTheme.colorScheme.primary
+        )
+    }
 }
 
-private suspend fun hasDevice(context: Context, vararg device: PreferenceStore.Preference<String>): Boolean {
-    device.forEach {
-        if (context.getPreferenceValue(it).isNotEmpty()) {
-            return true
-        }
-    }
-    return false
-}
+//private suspend fun hasDevice(context: Context, vararg device: PreferenceStore.Preference<String>): Boolean {
+//    device.forEach {
+//        if (context.getPreferenceValue(it).isNotEmpty()) {
+//            return true
+//        }
+//    }
+//    return false
+//}
 
 
-private fun LazyListScope.autoConnect(dialogState: DialogState) {
-    item {
-        DeviceConect("Device 1:", PreferenceStore.DEVICE_1, dialogState)
-    }
-    item {
-        DeviceConect("Device 2:", PreferenceStore.DEVICE_2, dialogState)
-    }
-    item {
-        DeviceConect("Device 3:", PreferenceStore.DEVICE_3, dialogState)
-    }
-
-}
-
-
-@Composable
-fun DeviceConect(name: String, pref: PreferenceStore.Preference<String>, dialogState: DialogState) {
-    var device by rememberPreferenceDefault(pref)
-    val connect = ConnectIdTech.getInstance()
-    val context = LocalContext.current
-    LaunchedEffect(null) {
-        connect.availableConnect.onEach {
-            Timber.e(dialogState.openState.toString())
-            Timber.e((it && dialogState.openState).toString())
-            if (it || connect.isConnected()) {
-                dialogState.close()
-                gotoPayActivity(context)
-            }
-        }.launchIn(this)
-        connect.connectBlueToothState.onEach { rc ->
-            if (rc != 0) {
-                when (rc) {
-                    1 -> Toast.makeText(context, "Invalid DEVICE_TYPE", Toast.LENGTH_SHORT)
-                        .show()
-
-                    2 -> Toast.makeText(
-                        context,
-                        "Bluetooth LE is not supported on this device",
-                        Toast.LENGTH_SHORT
-                    ).show()
-
-                    3 -> Toast.makeText(
-                        context,
-                        "Bluetooth LE is not available",
-                        Toast.LENGTH_SHORT
-                    ).show()
-
-                    4 -> Toast.makeText(
-                        context,
-                        "Bluetooth LE is not enabled",
-                        Toast.LENGTH_SHORT
-                    ).show()
-
-                    5 -> Toast.makeText(
-                        context,
-                        "Device not paired. Please pair first",
-                        Toast.LENGTH_SHORT
-                    ).show()
-                }
+//private fun LazyListScope.autoConnect(dialogState: DialogState) {
+//    item {
+//        DeviceConect("Device 1:", PreferenceStore.DEVICE_1, dialogState)
+//    }
+//    item {
+//        DeviceConect("Device 2:", PreferenceStore.DEVICE_2, dialogState)
+//    }
+//    item {
+//        DeviceConect("Device 3:", PreferenceStore.DEVICE_3, dialogState)
+//    }
+//
+//}
 
 
-            } else {
+//@Composable
+//fun DeviceConect(name: String, pref: PreferenceStore.Preference<String>, dialogState: DialogState) {
+//    var device by rememberPreferenceDefault(pref)
+//    val connect = ConnectIdTech.getInstance()
+//    val context = LocalContext.current
+//    LaunchedEffect(null) {
+//        connect.availableConnect.onEach {
+//            Timber.e(dialogState.openState.toString())
+//            if (it is DataResponse.DataSuccess || connect.isConnected()) {
+//                dialogState.close()
 //                gotoPayActivity(context)
-
-//                    Toast.makeText(
+//            }
+//        }.launchIn(this)
+//        connect.connectBlueToothState.onEach { rc ->
+//            if (rc != 0) {
+//                when (rc) {
+//                    1 -> Toast.makeText(context, "Invalid DEVICE_TYPE", Toast.LENGTH_SHORT)
+//                        .show()
+//
+//                    2 -> Toast.makeText(
 //                        context,
-//                        "Failed. Please disconnect first.",
+//                        "Bluetooth LE is not supported on this device",
 //                        Toast.LENGTH_SHORT
 //                    ).show()
-
-
-            }
-        }.launchIn(this)
-    }
-    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-        Text(modifier = Modifier.weight(2f), text = name)
-        TextField(modifier = Modifier.weight(7f), value = device, onValueChange = {
-            device = it.trim()
-        })
-        IconButton(modifier = Modifier.width(40.dp), onClick = {
-            dialogState.open()
-            connect.connectBlueTooth(device, context, dialogState)
-        }) {
-            Icon(imageVector = Icons.Filled.NextPlan, contentDescription = null)
-        }
-
-    }
-}
+//
+//                    3 -> Toast.makeText(
+//                        context,
+//                        "Bluetooth LE is not available",
+//                        Toast.LENGTH_SHORT
+//                    ).show()
+//
+//                    4 -> Toast.makeText(
+//                        context,
+//                        "Bluetooth LE is not enabled",
+//                        Toast.LENGTH_SHORT
+//                    ).show()
+//
+//                    5 -> Toast.makeText(
+//                        context,
+//                        "Device not paired. Please pair first",
+//                        Toast.LENGTH_SHORT
+//                    ).show()
+//                }
+//
+//
+//            } else {
+////                gotoPayActivity(context)
+//
+////                    Toast.makeText(
+////                        context,
+////                        "Failed. Please disconnect first.",
+////                        Toast.LENGTH_SHORT
+////                    ).show()
+//
+//
+//            }
+//        }.launchIn(this)
+//    }
+//    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+//        Text(modifier = Modifier.weight(2f), text = name)
+//        TextField(modifier = Modifier.weight(7f), value = device, onValueChange = {
+//            device = it.trim()
+//        })
+//        IconButton(modifier = Modifier.width(40.dp), onClick = {
+//            dialogState.open()
+//            connect.connectBlueTooth(device, context, dialogState)
+//        }) {
+//            Icon(imageVector = Icons.Filled.NextPlan, contentDescription = null)
+//        }
+//
+//    }
+//}
 
 
 @Composable
@@ -347,9 +355,9 @@ fun DevicesViewModel.BroadcastListener() {
         } else {
             @Suppress("DEPRECATION") it?.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE)
         }?.let { dev ->
-//            if (!foundDevices.contains(dev)) {
-//                foundDevices.add(dev)
-//            }
+            if (!foundDevices.contains(dev)) {
+                foundDevices.add(dev)
+            }
         }
     }
 }
@@ -369,60 +377,7 @@ fun DevicesViewModel.DeviceList(dialogState: DialogState) {
     val showUnnamed by rememberPreferenceDefault(PreferenceStore.SHOW_UNNAMED)
     val context = LocalContext.current
     val connect = ConnectIdTech.getInstance()
-    LaunchedEffect(null) {
-        connect.availableConnect.onEach {
-            Timber.e(dialogState.openState.toString())
-            Timber.e((it && dialogState.openState).toString())
-            if (it || connect.isConnected()) {
-                dialogState.openState = false
-                gotoPayActivity(context)
-            }
-        }.launchIn(this)
-        connect.connectBlueToothState.onEach { rc ->
-            if (rc != 0) {
-                when (rc) {
-                    1 -> Toast.makeText(context, "Invalid DEVICE_TYPE", Toast.LENGTH_SHORT)
-                        .show()
 
-                    2 -> Toast.makeText(
-                        context,
-                        "Bluetooth LE is not supported on this device",
-                        Toast.LENGTH_SHORT
-                    ).show()
-
-                    3 -> Toast.makeText(
-                        context,
-                        "Bluetooth LE is not available",
-                        Toast.LENGTH_SHORT
-                    ).show()
-
-                    4 -> Toast.makeText(
-                        context,
-                        "Bluetooth LE is not enabled",
-                        Toast.LENGTH_SHORT
-                    ).show()
-
-                    5 -> Toast.makeText(
-                        context,
-                        "Device not paired. Please pair first",
-                        Toast.LENGTH_SHORT
-                    ).show()
-                }
-
-
-            } else {
-//                gotoPayActivity(context)
-
-//                    Toast.makeText(
-//                        context,
-//                        "Failed. Please disconnect first.",
-//                        Toast.LENGTH_SHORT
-//                    ).show()
-
-
-            }
-        }.launchIn(this)
-    }
 
 
 
@@ -438,6 +393,11 @@ fun DevicesViewModel.DeviceList(dialogState: DialogState) {
             }
         } else {
             item {
+                LaunchedEffect(null) {
+                    ConnectIdTech.getInstance().initState()
+                    ConnectIdTech.getInstance().autoConnect(context.applicationContext)
+
+                }
                 Text(
                     stringResource(R.string.scanned_devices),
                     color = MaterialTheme.colorScheme.primary,
@@ -452,29 +412,33 @@ fun DevicesViewModel.DeviceList(dialogState: DialogState) {
             }
 
             // Filter out unnamed devices depending on preference
-//            with(foundDevices.filter { showUnnamed || it.name != null }) {
-//                if (isEmpty() || !isBluetoothEnabled) {
-//                    item {
-////                        RequireLocationPermission {
-//                        if (!isScanning) {
-//                            Text(stringResource(R.string.swipe_refresh))
+            with(foundDevices.filter { showUnnamed || it.name != null }) {
+                if (isEmpty() || !isBluetoothEnabled) {
+                    item {
+//                        RequireLocationPermission {
+                        if (!isScanning) {
+                            Text(stringResource(R.string.swipe_refresh))
+                        }
 //                        }
-////                        }
-//                    }
-//                } else {
-//                    items(this) { d ->
-//                        runCatching {
-//                            DeviceCard(d) {
-////                                onConnect(d)
-//                                dialogState.openState = true
-//                                connect.connectBlueTooth(d.address, context.applicationContext, dialogState)
-//                            }
-//                        }.onFailure {
-//                            Timber.tag("DeviceList").e(it, "Failed to get device info")
-//                        }
-//                    }
-//                }
-//            }
+                    }
+                } else {
+                    items(this) { d ->
+
+                        runCatching {
+                            DeviceCard(d) {
+//                                onConnect(d)
+                                connect.connectBlueTooth(
+                                    d.address,
+                                    context.applicationContext,
+                                    dialogState
+                                )
+                            }
+                        }.onFailure {
+                            Timber.tag("DeviceList").e(it, "Failed to get device info")
+                        }
+                    }
+                }
+            }
 
             item {
                 Spacer(Modifier.height(8.dp))
@@ -485,24 +449,26 @@ fun DevicesViewModel.DeviceList(dialogState: DialogState) {
                 )
             }
 
-//            if (pairedDevices.isEmpty() || !isBluetoothEnabled) {
-//                item {
-//                    Text(stringResource(R.string.no_paired_devices))
-//                }
-//            } else {
-//                items(pairedDevices) {
-//                    runCatching {
-//                        DeviceCard(it, onClick = {
-//                            connect.connectBlueTooth(it.address, context.applicationContext, dialogState)
-//                            dialogState.open()
-//
-////                            mSwiperControllerManager.setSwiperType(SwiperType.IDTech)
-//                        })
-//                    }.onFailure {
-//                        Timber.e(it, "Failed to get device info")
-//                    }
-//                }
-//            }
+            if (pairedDevices.isEmpty() || !isBluetoothEnabled) {
+                item {
+                    Text(stringResource(R.string.no_paired_devices))
+                }
+            } else {
+                items(pairedDevices) {
+                    runCatching {
+                        DeviceCard(it, onClick = {
+                            connect.connectBlueTooth(
+                                it.address,
+                                context.applicationContext,
+                                dialogState
+                            )
+//                            mSwiperControllerManager.setSwiperType(SwiperType.IDTech)
+                        })
+                    }.onFailure {
+                        Timber.e(it, "Failed to get device info")
+                    }
+                }
+            }
         }
     }
 }

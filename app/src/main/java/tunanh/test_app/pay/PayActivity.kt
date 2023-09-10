@@ -30,6 +30,7 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
 import tunanh.test_app.DataResponse
@@ -60,6 +61,11 @@ class PayActivity : ComponentActivity() {
             }
         }
     }
+
+    override fun onDestroy() {
+        ConnectIdTech.getInstance().releaseSDK()
+        super.onDestroy()
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -89,7 +95,7 @@ fun Greeting2(modifier: Modifier = Modifier) {
             navigationIcon = {
                 IconButton(onClick = {
                     if (context is PayActivity) {
-                        ConnectIdTech.getInstance().disconnect()
+//                        ConnectIdTech.getInstance().disconnect()
                         Handler(Looper.getMainLooper()).postDelayed({
                             context.finish()
                         }, 500)
@@ -101,8 +107,12 @@ fun Greeting2(modifier: Modifier = Modifier) {
         )
     }) { padding ->
         with(viewModel<PayViewModel>()) {
+
             val cardData by cardDataState.collectAsState()
             val listenerEnabled by canListener.collectAsState()
+            var listener2 by remember {
+                mutableStateOf(true)
+            }
             val payEnabled by canPay.collectAsState()
             val message by messageState.collectAsState()
             val message2 by this.message.collectAsState()
@@ -111,6 +121,11 @@ fun Greeting2(modifier: Modifier = Modifier) {
 
             BackHandler {}
             rememberCoroutineScope().launch {
+                canListener.onEach {
+                    if (it) {
+                        listener2 = true
+                    }
+                }.launchIn(this)
                 disconnectState.onEach {
                     if (it) {
                         if (context is PayActivity) {
@@ -119,11 +134,11 @@ fun Greeting2(modifier: Modifier = Modifier) {
                                 "lost connection need reconnect",
                                 Toast.LENGTH_LONG
                             ).show()
-                            context.startActivity(Intent(context,PreActivity::class.java))
+                            context.startActivity(Intent(context, PreActivity::class.java))
                             context.finish()
                         }
                     }
-                }
+                }.launchIn(this)
                 autoConnectState.onEach {
                     when (it) {
                         is DataResponse.DataSuccess -> {
@@ -147,7 +162,7 @@ fun Greeting2(modifier: Modifier = Modifier) {
 
                         }
                     }
-                }
+                }.launchIn(this)
             }
             if (deviceViewModel.isBluetoothEnabled) {
                 Column(
@@ -159,40 +174,92 @@ fun Greeting2(modifier: Modifier = Modifier) {
                     Spacer(modifier = Modifier.height(16.dp))
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Button(onClick = {
-                            listener(context.applicationContext)
-                        }, enabled = listenerEnabled) {
+                            if (listenerEnabled && listener2) {
+                                listener2 = false
+                                listener(context.applicationContext)
+                            }
+                        }, enabled = listenerEnabled && listener2) {
                             Text(text = "listener swipe and transaction")
                         }
                         Spacer(modifier = Modifier.width(4.dp))
-                        if (!listenerEnabled) {
+                        if (!(listenerEnabled && listener2)) {
                             LinearProgressIndicator(Modifier.fillMaxWidth())
                         }
                         Spacer(modifier = Modifier.width(4.dp))
                     }
-                    Row {
-                        Text(text = "card number:", style = TextStyle(fontSize = 24.sp))
+                    if (!listener2) {
                         Spacer(modifier = Modifier.width(8.dp))
-                        Text(
-                            text = cardData.cardNumber,
-                            style = TextStyle(fontSize = 24.sp)
-                        )
+                        Text(text = message2)
                     }
-                    Row {
-                        Text(text = "expiry:", style = TextStyle(fontSize = 16.sp))
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(
-                            text = cardData.expiry,
-                            style = TextStyle(fontSize = 16.sp)
-                        )
+                    if (listener2) {
+                        Row(
+                            Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "card number:",
+                                style = TextStyle(fontSize = 24.sp),
+                                modifier = Modifier.weight(3f)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            TextField(
+                                modifier = Modifier.weight(5f),
+                                value = cardData.cardNumber,
+                                onValueChange = {
+                                    updateCardData(cardData.copy(cardNumber = it))
+                                })
+//                            Text(
+//                                text = cardData.cardNumber,
+//                                style = TextStyle(fontSize = 24.sp)
+//                            )
+                        }
+                        Row(
+                            Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "expiry:",
+                                style = TextStyle(fontSize = 16.sp),
+                                modifier = Modifier.weight(3f)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+
+                            TextField(
+                                modifier = Modifier.weight(5f),
+                                value = cardData.expiry,
+                                onValueChange = {
+                                    updateCardData(cardData.copy(expiry = it))
+                                })
+//                            Text(
+//                                text = cardData.expiry,
+//                                style = TextStyle(fontSize = 16.sp)
+//                            )
+                        }
+                        Row(
+                            Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "name:",
+                                style = TextStyle(fontSize = 12.sp),
+                                modifier = Modifier.weight(3f)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            TextField(
+                                modifier = Modifier.weight(5f),
+                                value = cardData.name,
+                                onValueChange = {
+                                    updateCardData(cardData.copy(name = it))
+                                })
+//                            Text(
+//                                text = cardData.name,
+//                                style = TextStyle(fontSize = 12.sp)
+//                            )
+                        }
                     }
-                    Row {
-                        Text(text = "name:", style = TextStyle(fontSize = 12.sp))
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(
-                            text = cardData.name,
-                            style = TextStyle(fontSize = 12.sp)
-                        )
-                    }
+
+
+
 
                     if (cardData.cardNumber.isNotEmpty() && cardData.expiry.isNotEmpty() && listenerEnabled) {
                         Row {
@@ -219,7 +286,7 @@ fun Greeting2(modifier: Modifier = Modifier) {
                             Text(text = "pay")
                         }
                         Spacer(modifier = Modifier.height(16.dp))
-                        Text(text = message2 + message)
+                        Text(text = message)
                         Text(text = response)
                         Spacer(modifier = Modifier.height(16.dp))
                     }
