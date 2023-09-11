@@ -100,6 +100,9 @@ private fun DevicesViewModel.DeviceContent(snackBarHostState: SnackbarHostState)
     val controller = LocalController.current
 //    var isConnect = remember { true }
     val context = LocalContext.current
+    var isShowSnackBar by remember {
+        mutableStateOf(false)
+    }
 
 //    if (isBluetoothEnabled && isConnect) {
 //        LaunchedEffect(null) {
@@ -152,6 +155,7 @@ private fun DevicesViewModel.DeviceContent(snackBarHostState: SnackbarHostState)
             when (it) {
                 is DataResponse.DataLoading -> {
                     dialogState.open()
+                    isShowSnackBar = true
                 }
 
                 is DataResponse.DataSuccess -> {
@@ -164,23 +168,27 @@ private fun DevicesViewModel.DeviceContent(snackBarHostState: SnackbarHostState)
                     if (it.errorData is String && it.errorData.isNotEmpty()) {
                         Toast.makeText(context, it.errorData, Toast.LENGTH_LONG).show()
                     }
+                    if (isShowSnackBar) {
+                        isShowSnackBar = false
+                        val snackbarResult = snackBarHostState.showSnackbar(
+                            message = "if the device is not found please swipe down and try again",
+                            actionLabel = "retry",
+                            duration = SnackbarDuration.Long
+                        )
+                        when (snackbarResult) {
+                            SnackbarResult.ActionPerformed -> {
+                                Timber.e("action")
+                                Handler(Looper.getMainLooper()).post {
+                                    refresh(controller)
+                                }
+                            }
 
-                    val snackbarResult = snackBarHostState.showSnackbar(
-                        message = "if the device is not found please swipe down and try again",
-                        actionLabel = "retry",
-                        duration = SnackbarDuration.Long
-                    )
-                    when (snackbarResult) {
-                        SnackbarResult.ActionPerformed -> {
-                            Handler(Looper.getMainLooper()).post {
-                                refresh(controller)
+                            SnackbarResult.Dismissed -> {
+                                Timber.e("dismiss")
                             }
                         }
-
-                        SnackbarResult.Dismissed -> {
-
-                        }
                     }
+
 
 //                    Snackbar(modifier = Modifier.padding(8.dp),
 //                        action = {
@@ -366,6 +374,7 @@ private fun gotoPayActivity(context: Context) {
     context.apply {
         if (this is BluetoothActivity) {
             startActivity(Intent(this, PayActivity::class.java))
+            finish()
         }
     }
 }
@@ -377,10 +386,6 @@ fun DevicesViewModel.DeviceList(dialogState: DialogState) {
     val showUnnamed by rememberPreferenceDefault(PreferenceStore.SHOW_UNNAMED)
     val context = LocalContext.current
     val connect = ConnectIdTech.getInstance()
-
-
-
-
     LazyColumn(
         Modifier
             .fillMaxSize()
@@ -428,7 +433,7 @@ fun DevicesViewModel.DeviceList(dialogState: DialogState) {
                             DeviceCard(d) {
 //                                onConnect(d)
                                 connect.connectBlueTooth(
-                                    d.address,
+                                    d,
                                     context.applicationContext,
                                     dialogState
                                 )
@@ -458,7 +463,7 @@ fun DevicesViewModel.DeviceList(dialogState: DialogState) {
                     runCatching {
                         DeviceCard(it, onClick = {
                             connect.connectBlueTooth(
-                                it.address,
+                                it,
                                 context.applicationContext,
                                 dialogState
                             )

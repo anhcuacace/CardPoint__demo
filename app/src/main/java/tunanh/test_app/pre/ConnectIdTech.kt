@@ -1,17 +1,24 @@
 package tunanh.test_app.pre
 
+import android.annotation.SuppressLint
+import android.bluetooth.BluetoothAdapter
+import android.bluetooth.BluetoothDevice
+import android.bluetooth.BluetoothGatt
+import android.bluetooth.BluetoothGattCallback
 import android.content.Context
 import android.os.CountDownTimer
+import android.os.Handler
 import android.os.Looper
 import android.widget.Toast
 import com.dbconnection.dblibrarybeta.ProfileManager
 import com.dbconnection.dblibrarybeta.RESTResponse
+import com.google.gson.Gson
+import com.google.gson.JsonSyntaxException
 import com.idtechproducts.device.CardData
 import com.idtechproducts.device.Common
 import com.idtechproducts.device.ErrorCode
 import com.idtechproducts.device.IDTEMVData
 import com.idtechproducts.device.IDTMSRData
-import com.idtechproducts.device.IDT_Device.context
 import com.idtechproducts.device.IDT_VP3300
 import com.idtechproducts.device.OnReceiverListener
 import com.idtechproducts.device.OnReceiverListenerPINRequest
@@ -41,7 +48,7 @@ import tunanh.test_app.ui.DialogState
 
 
 class ConnectIdTech private constructor() : OnReceiverListener, OnReceiverListenerPINRequest,
-    FirmwareUpdateToolMsg, RESTResponse {
+    FirmwareUpdateToolMsg, RESTResponse, BluetoothGattCallback() {
     companion object {
         private var instance: ConnectIdTech? = null
         fun getInstance() = instance ?: synchronized(this) {
@@ -99,15 +106,21 @@ class ConnectIdTech private constructor() : OnReceiverListener, OnReceiverListen
         _availableConnect.value = DataResponse.DataIdle()
     }
 
+    @SuppressLint("MissingPermission")
     @Synchronized
     fun autoConnect(context: Context) {
         if (_availableConnect.value !is DataResponse.DataLoading) {
-
+            Timber.e("auto Connect")
             _availableConnect.value = DataResponse.DataLoading()
             CoroutineScope(Dispatchers.IO).launch {
-                val name = context.getPreferenceValue(DEVICE)
-                Timber.e(name)
-                if (name.isEmpty()) {
+                val bDevice = try {
+                    context.getPreferenceValue(DEVICE).let {
+                        Gson().fromJson(it, BluetoothDevice::class.java)
+                    }
+                } catch (e: JsonSyntaxException) {
+                    null
+                }
+                if (bDevice == null) {
                     _availableConnect.value = DataResponse.DataIdle()
                     return@launch
                 }
@@ -127,12 +140,13 @@ class ConnectIdTech private constructor() : OnReceiverListener, OnReceiverListen
                             return@launch
                         }
                     }
+
                     val rc = device!!.device_enableBLESearch(
                         device!!.device_getDeviceType(),
-                        name,
+                        bDevice.name,
                         15000
                     )
-
+                    bDevice.connectGatt(context, false, this@ConnectIdTech)
                     if (rc == 0) {
                         _timeWaiting.value = TimeOutConnect
 
@@ -219,18 +233,42 @@ class ConnectIdTech private constructor() : OnReceiverListener, OnReceiverListen
         _cardDataState = cardDataState
     }
 
-    fun connectBlueTooth(address: String, context: Context, dialogState: DialogState) {
+
+    override fun onConnectionStateChange(gatt: BluetoothGatt?, status: Int, newState: Int) {
+        super.onConnectionStateChange(gatt, status, newState)
+        Timber.e(newState.toString())
+        if (newState == BluetoothAdapter.STATE_CONNECTED) {
+            Handler(Looper.getMainLooper()).postDelayed({
+                if (_availableConnect.value is DataResponse.DataLoading) {
+                    _availableConnect.value = DataResponse.DataError(null)
+                }
+            }, 10000)
+
+        }
+    }
+//    override fun onMtuChanged(gatt: BluetoothGatt?, mtu: Int, status: Int) {
+//        super.onMtuChanged(gatt, mtu, status)
+//        if (status== BluetoothAdapter.STATE_CONNECTED && !isConnected){
+//            isConnected=true
+//            _availableConnect.value = DataResponse.DataSuccess(true)
+//        }
+//    }
+
+    @SuppressLint("MissingPermission")
+    fun connectBlueTooth(bDevice: BluetoothDevice, context: Context, dialogState: DialogState) {
         if (availableConnect.value !is DataResponse.DataLoading) {
             _availableConnect.value = DataResponse.DataLoading()
             if (device == null) {
                 initializeReader(context)
             }
             device!!.setIDT_Device(fwTool)
+
             val rc = device!!.device_enableBLESearch(
                 device!!.device_getDeviceType(),
-                address,
+                bDevice.name,
                 80000
             )
+            bDevice.connectGatt(context, false, this@ConnectIdTech)
 
             Timber.e(rc.toString())
             if (rc == 0) {
@@ -241,17 +279,12 @@ class ConnectIdTech private constructor() : OnReceiverListener, OnReceiverListen
                     val countDownTimer = object : CountDownTimer(TimeOutConnect * 1000L, 1000) {
                         override fun onTick(millisUntilFinished: Long) {
                             _timeWaiting.value = (millisUntilFinished / 1000).toInt()
+                            Timber.e("countdown $millisUntilFinished")
                         }
 
                         override fun onFinish() {
-                            if (dialogState.openState && device?.device_isConnected() == false) {
-                                dialogState.close()
-                                Toast.makeText(
-                                    context,
-                                    "An error occurred, please try again",
-                                    Toast.LENGTH_LONG
-                                )
-                                    .show()
+                            if (_availableConnect.value is DataResponse.DataLoading) {
+                                _availableConnect.value = DataResponse.DataError("timeout")
                             }
                         }
 
@@ -259,7 +292,8 @@ class ConnectIdTech private constructor() : OnReceiverListener, OnReceiverListen
                     _availableConnect.onEach {
                         if (it is DataResponse.DataSuccess || it is DataResponse.DataError<*, *>) {
                             if (it is DataResponse.DataSuccess) {
-                                context.setPreference(DEVICE, address)
+                                val json = Gson().toJson(bDevice)
+                                context.setPreference(DEVICE, json)
                             }
                             countDownTimer.cancel()
                         }
@@ -322,7 +356,7 @@ class ConnectIdTech private constructor() : OnReceiverListener, OnReceiverListen
     }
 
     private fun timeoutConnect(dialogState: DialogState, context: Context) {
-        android.os.Handler(Looper.getMainLooper()).postDelayed({
+        Handler(Looper.getMainLooper()).postDelayed({
             if (dialogState.openState && device?.device_isConnected() == false) {
                 dialogState.close()
                 Toast.makeText(context, "An error occurred, please try again", Toast.LENGTH_LONG)
@@ -383,7 +417,7 @@ class ConnectIdTech private constructor() : OnReceiverListener, OnReceiverListen
                     this.canListener.value = true
                 }
             }
-            android.os.Handler(Looper.getMainLooper()).postDelayed({
+            Handler(Looper.getMainLooper()).postDelayed({
                 if (!this.canListener.value) {
                     this.canListener.value = true
                 }
@@ -396,7 +430,7 @@ class ConnectIdTech private constructor() : OnReceiverListener, OnReceiverListen
         if (device != null) {
             if (device!!.device_getDeviceType() != DEVICE_TYPE.DEVICE_VP3300_COM) device!!.unregisterListen()
             device!!.release()
-            //				device = null;
+//            				device = null
         }
     }
 
@@ -601,11 +635,11 @@ class ConnectIdTech private constructor() : OnReceiverListener, OnReceiverListen
 
     override fun deviceDisconnected() {
         Timber.e("deviceDisconnected")
-        if (device != null && context != null && device?.device_getDeviceType() == DEVICE_TYPE.DEVICE_VP3300_BT) {
-            autoConnect(context)
-        } else {
-            disconnectState.value = true
-        }
+//        if (device != null && context != null && device?.device_getDeviceType() == DEVICE_TYPE.DEVICE_VP3300_BT) {
+////            autoConnect(context)
+//        } else {
+        disconnectState.value = true
+//        }
     }
 
     override fun timeout(p0: Int) {

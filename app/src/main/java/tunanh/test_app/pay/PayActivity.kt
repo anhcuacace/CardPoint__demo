@@ -5,8 +5,6 @@ import android.bluetooth.BluetoothManager
 import android.content.Context
 import android.content.Intent
 import android.os.Bundle
-import android.os.Handler
-import android.os.Looper
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
@@ -15,8 +13,6 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBackIos
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -92,18 +88,18 @@ fun Greeting2(modifier: Modifier = Modifier) {
     Scaffold(modifier = modifier.nestedScroll(scrollBehavior.nestedScrollConnection), topBar = {
         TopAppBar(
             title = { Text(text = "Pay") },
-            navigationIcon = {
-                IconButton(onClick = {
-                    if (context is PayActivity) {
-//                        ConnectIdTech.getInstance().disconnect()
-                        Handler(Looper.getMainLooper()).postDelayed({
-                            context.finish()
-                        }, 500)
-                    }
-                }) {
-                    Icon(imageVector = Icons.Filled.ArrowBackIos, contentDescription = null)
-                }
-            }, scrollBehavior = scrollBehavior
+//            navigationIcon = {
+//                IconButton(onClick = {
+//                    if (context is PayActivity) {
+////                        ConnectIdTech.getInstance().disconnect()
+//                        Handler(Looper.getMainLooper()).postDelayed({
+//                            context.finish()
+//                        }, 500)
+//                    }
+//                }) {
+//                    Icon(imageVector = Icons.Filled.ArrowBackIos, contentDescription = null)
+//                }
+//            }, scrollBehavior = scrollBehavior
         )
     }) { padding ->
         with(viewModel<PayViewModel>()) {
