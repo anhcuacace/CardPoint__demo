@@ -17,6 +17,7 @@ import com.google.accompanist.permissions.ExperimentalPermissionsApi
 import tunanh.test_app.ComposableLifecycle
 import tunanh.test_app.NavGraph
 import tunanh.test_app.RequiresBluetoothPermission
+import tunanh.test_app.pre.ConnectIdTech
 import tunanh.test_app.ui.theme.Test_appTheme
 
 val LocalController = staticCompositionLocalOf<BluetoothController> {
@@ -24,6 +25,8 @@ val LocalController = staticCompositionLocalOf<BluetoothController> {
 }
 
 class BluetoothActivity : ComponentActivity() {
+
+    var isOpenPayActivity = false
 
     private var bluetoothController: BluetoothController? by mutableStateOf(null)
 
@@ -36,6 +39,13 @@ class BluetoothActivity : ComponentActivity() {
         override fun onServiceDisconnected(name: ComponentName?) {
             bluetoothController = null
         }
+    }
+
+    override fun onDestroy() {
+        if (!isOpenPayActivity) {
+            ConnectIdTech.getInstance().unregisterListen()
+        }
+        super.onDestroy()
     }
 
     @OptIn(ExperimentalPermissionsApi::class)

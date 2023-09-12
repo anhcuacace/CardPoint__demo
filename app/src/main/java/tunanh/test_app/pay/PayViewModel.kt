@@ -13,12 +13,7 @@ import kotlinx.coroutines.launch
 import timber.log.Timber
 import tunanh.test_app.api.ApiResponse
 import tunanh.test_app.api.CallApiRepository
-import tunanh.test_app.api.model.AccountRequest
-import tunanh.test_app.api.model.AuthRequest
-import tunanh.test_app.api.model.AuthResponse
-import tunanh.test_app.api.model.CaptureRequest
-import tunanh.test_app.api.model.CaptureResponse
-import tunanh.test_app.api.model.TokenResponse
+import tunanh.test_app.api.model.*
 import tunanh.test_app.pre.ConnectIdTech
 
 class PayViewModel : ViewModel() {
@@ -28,8 +23,11 @@ class PayViewModel : ViewModel() {
 
     val cardDataState: StateFlow<PayModel> = payModel
     private val connect = ConnectIdTech.getInstance()
-    private val _canListener = MutableStateFlow(true)
-    val canListener: StateFlow<Boolean> = _canListener
+    private val _canListenerTransaction = MutableStateFlow(true)
+    val canListenerTransaction: StateFlow<Boolean> = _canListenerTransaction
+
+    private val _canListenerSwipe = MutableStateFlow(true)
+    val canListenerSwipe: StateFlow<Boolean> = _canListenerSwipe
 
     val canPay = MutableStateFlow(false)
 
@@ -56,12 +54,19 @@ class PayViewModel : ViewModel() {
     private val captureState =
         MutableStateFlow<ApiResponse<CaptureResponse>>(ApiResponse.DataIdle())
 
-    fun listener(context: Context) {
+    fun listenerTransaction(context: Context) {
         _response.value = ""
         _cardDataState.value = PayModel("", "", "")
-        connect.listenerIdTech(context, _canListener)
+        connect.listenerTransactionIdTech(context, _canListenerTransaction)
 //        connect.setSwipeListener(_cardDataState)
     }
+
+    fun listenerSwipe(context: Context) {
+        _response.value = ""
+        _cardDataState.value = PayModel("", "", "")
+        connect.listenerSwipeIDTech(context, _canListenerSwipe)
+    }
+
 
     private suspend fun <T> loadData(
         state: MutableStateFlow<ApiResponse<T>>,
@@ -165,7 +170,8 @@ class PayViewModel : ViewModel() {
         _cardDataState.onEach {
             error = false
             Timber.e(it.toString())
-            _canListener.value = true
+            _canListenerTransaction.value = true
+            _canListenerSwipe.value = true
             updateCardData(it)
             if (it.cardNumber.isNotEmpty()) {
                 loadData(tokenState) { getToken() }

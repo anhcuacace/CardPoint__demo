@@ -1,10 +1,6 @@
 package tunanh.test_app.pre
 
 import android.annotation.SuppressLint
-import android.bluetooth.BluetoothAdapter
-import android.bluetooth.BluetoothDevice
-import android.bluetooth.BluetoothGatt
-import android.bluetooth.BluetoothGattCallback
 import android.content.Context
 import android.os.CountDownTimer
 import android.os.Handler
@@ -12,30 +8,16 @@ import android.os.Looper
 import android.widget.Toast
 import com.dbconnection.dblibrarybeta.ProfileManager
 import com.dbconnection.dblibrarybeta.RESTResponse
-import com.google.gson.Gson
-import com.google.gson.JsonSyntaxException
-import com.idtechproducts.device.CardData
-import com.idtechproducts.device.Common
-import com.idtechproducts.device.ErrorCode
-import com.idtechproducts.device.IDTEMVData
-import com.idtechproducts.device.IDTMSRData
-import com.idtechproducts.device.IDT_VP3300
-import com.idtechproducts.device.OnReceiverListener
-import com.idtechproducts.device.OnReceiverListenerPINRequest
+import com.idtechproducts.device.*
+import com.idtechproducts.device.IDT_Device.context
 import com.idtechproducts.device.ReaderInfo.DEVICE_TYPE
-import com.idtechproducts.device.ResDataStruct
-import com.idtechproducts.device.StructConfigParameters
 import com.idtechproducts.device.audiojack.tools.FirmwareUpdateTool
 import com.idtechproducts.device.audiojack.tools.FirmwareUpdateToolMsg
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.delay
+import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import timber.log.Timber
 import tunanh.test_app.DataResponse
 import tunanh.test_app.LoadingStatus
@@ -44,11 +26,10 @@ import tunanh.test_app.extention.ifNullOrEmpty
 import tunanh.test_app.getPreferenceValue
 import tunanh.test_app.pay.PayModel
 import tunanh.test_app.setPreference
-import tunanh.test_app.ui.DialogState
 
 
 class ConnectIdTech private constructor() : OnReceiverListener, OnReceiverListenerPINRequest,
-    FirmwareUpdateToolMsg, RESTResponse, BluetoothGattCallback() {
+    FirmwareUpdateToolMsg, RESTResponse {
     companion object {
         private var instance: ConnectIdTech? = null
         fun getInstance() = instance ?: synchronized(this) {
@@ -73,7 +54,7 @@ class ConnectIdTech private constructor() : OnReceiverListener, OnReceiverListen
 
     private var device: IDT_VP3300? = null
     private var fwTool: FirmwareUpdateTool? = null
-    private val profileManager: ProfileManager = ProfileManager(this)
+    private var profileManager: ProfileManager = ProfileManager(this)
     private val _availableConnect = MutableStateFlow<DataResponse<Boolean>>(DataResponse.DataIdle())
     val availableConnect: StateFlow<DataResponse<Boolean>> = _availableConnect
 
@@ -106,21 +87,14 @@ class ConnectIdTech private constructor() : OnReceiverListener, OnReceiverListen
         _availableConnect.value = DataResponse.DataIdle()
     }
 
-    @SuppressLint("MissingPermission")
     @Synchronized
     fun autoConnect(context: Context) {
         if (_availableConnect.value !is DataResponse.DataLoading) {
             Timber.e("auto Connect")
             _availableConnect.value = DataResponse.DataLoading()
             CoroutineScope(Dispatchers.IO).launch {
-                val bDevice = try {
-                    context.getPreferenceValue(DEVICE).let {
-                        Gson().fromJson(it, BluetoothDevice::class.java)
-                    }
-                } catch (e: JsonSyntaxException) {
-                    null
-                }
-                if (bDevice == null) {
+                val bDevice: String = context.getPreferenceValue(DEVICE)
+                if (bDevice.isEmpty()) {
                     _availableConnect.value = DataResponse.DataIdle()
                     return@launch
                 }
@@ -140,44 +114,8 @@ class ConnectIdTech private constructor() : OnReceiverListener, OnReceiverListen
                             return@launch
                         }
                     }
-
-                    val rc = device!!.device_enableBLESearch(
-                        device!!.device_getDeviceType(),
-                        bDevice.name,
-                        15000
-                    )
-                    bDevice.connectGatt(context, false, this@ConnectIdTech)
-                    if (rc == 0) {
-                        _timeWaiting.value = TimeOutConnect
-
-                        withContext(Dispatchers.Main) {
-                            val countDownTimer =
-                                object : CountDownTimer(TimeOutConnect * 1000L, 1000) {
-                                    override fun onTick(millisUntilFinished: Long) {
-                                        _timeWaiting.value = (millisUntilFinished / 1000).toInt()
-                                        Timber.e("countdown $millisUntilFinished")
-                                    }
-
-                                    override fun onFinish() {
-                                        if (_availableConnect.value is DataResponse.DataLoading) {
-                                            _availableConnect.value = DataResponse.DataError(null)
-                                        }
-                                    }
-                                }
-                            _availableConnect.onEach {
-                                if (it is DataResponse.DataSuccess || it is DataResponse.DataError<*, *>) {
-                                    countDownTimer.cancel()
-                                }
-                            }.launchIn(this)
-                            countDownTimer.start()
-                        }
-
-
-                    } else {
-                        _availableConnect.value = DataResponse.DataError(null)
-                        return@launch
-                    }
                 }
+                connectDevice(context, bDevice)
 
 //                listDevice(context).forEach {
 //                    if ((_autoConnect.value !is DataResponse.DataSuccess) || _autoConnect.value.loadingStatus == LoadingStatus.Error) {
@@ -203,6 +141,86 @@ class ConnectIdTech private constructor() : OnReceiverListener, OnReceiverListen
 
             }
         }
+    }
+
+    private fun connectDevice(context: Context, bDevice: String, connected: suspend () -> Unit = {}) {
+
+        val rc = device!!.device_enableBLESearch(
+            device!!.device_getDeviceType(),
+            bDevice,
+            80000
+        )
+        Timber.e(rc.toString())
+        if (rc == 0) {
+
+            _timeWaiting.value = TimeOutConnect
+            CoroutineScope(Dispatchers.Main).launch {
+
+                countDownTimer = object : CountDownTimer(TimeOutConnect * 1000L, 1000) {
+                    override fun onTick(millisUntilFinished: Long) {
+                        _timeWaiting.value = (millisUntilFinished / 1000).toInt()
+                        Timber.e("countdown $millisUntilFinished")
+                    }
+
+                    override fun onFinish() {
+                        if (_availableConnect.value is DataResponse.DataLoading) {
+                            timeoutConnect()
+                        }
+                    }
+
+                }
+                _availableConnect.onEach {
+                    if (it is DataResponse.DataSuccess || it is DataResponse.DataError<*, *>) {
+                        if (it is DataResponse.DataSuccess) {
+
+                            connected()
+                        }
+                        countDownTimer?.cancel()
+                    }
+                }.launchIn(this)
+                countDownTimer?.start()
+            }
+
+        } else {
+            _availableConnect.value = DataResponse.DataError(rc)
+            when (rc) {
+                1 -> Toast.makeText(context, "Invalid DEVICE_TYPE", Toast.LENGTH_SHORT)
+                    .show()
+
+                2 -> Toast.makeText(
+                    context,
+                    "Bluetooth LE is not supported on this device",
+                    Toast.LENGTH_SHORT
+                ).show()
+
+                3 -> Toast.makeText(
+                    context,
+                    "Bluetooth LE is not available",
+                    Toast.LENGTH_SHORT
+                ).show()
+
+                4 -> Toast.makeText(
+                    context,
+                    "Bluetooth LE is not enabled",
+                    Toast.LENGTH_SHORT
+                ).show()
+
+                5 -> {
+                    Toast.makeText(
+                        context,
+                        "Device not paired. Please pair first",
+                        Toast.LENGTH_SHORT
+                    ).show()
+                    unregisterListen()
+                    releaseSDK()
+                    device = null
+                    IDT_Device.context = null
+                }
+            }
+
+
+        }
+
     }
 
 //    fun connectUsb(context: Context) {
@@ -234,28 +252,17 @@ class ConnectIdTech private constructor() : OnReceiverListener, OnReceiverListen
     }
 
 
-    override fun onConnectionStateChange(gatt: BluetoothGatt?, status: Int, newState: Int) {
-        super.onConnectionStateChange(gatt, status, newState)
-        Timber.e(newState.toString())
-        if (newState == BluetoothAdapter.STATE_CONNECTED) {
-            Handler(Looper.getMainLooper()).postDelayed({
-                if (_availableConnect.value is DataResponse.DataLoading) {
-                    _availableConnect.value = DataResponse.DataError(null)
-                }
-            }, 10000)
-
-        }
-    }
-//    override fun onMtuChanged(gatt: BluetoothGatt?, mtu: Int, status: Int) {
+    //    override fun onMtuChanged(gatt: BluetoothGatt?, mtu: Int, status: Int) {
 //        super.onMtuChanged(gatt, mtu, status)
 //        if (status== BluetoothAdapter.STATE_CONNECTED && !isConnected){
 //            isConnected=true
 //            _availableConnect.value = DataResponse.DataSuccess(true)
 //        }
 //    }
+    private var countDownTimer: CountDownTimer? = null
 
     @SuppressLint("MissingPermission")
-    fun connectBlueTooth(bDevice: BluetoothDevice, context: Context, dialogState: DialogState) {
+    fun connectBlueTooth(bDevice: String, context: Context) {
         if (availableConnect.value !is DataResponse.DataLoading) {
             _availableConnect.value = DataResponse.DataLoading()
             if (device == null) {
@@ -263,75 +270,8 @@ class ConnectIdTech private constructor() : OnReceiverListener, OnReceiverListen
             }
             device!!.setIDT_Device(fwTool)
 
-            val rc = device!!.device_enableBLESearch(
-                device!!.device_getDeviceType(),
-                bDevice.name,
-                80000
-            )
-            bDevice.connectGatt(context, false, this@ConnectIdTech)
-
-            Timber.e(rc.toString())
-            if (rc == 0) {
-                dialogState.open()
-                _timeWaiting.value = TimeOutConnect
-                CoroutineScope(Dispatchers.Main).launch {
-
-                    val countDownTimer = object : CountDownTimer(TimeOutConnect * 1000L, 1000) {
-                        override fun onTick(millisUntilFinished: Long) {
-                            _timeWaiting.value = (millisUntilFinished / 1000).toInt()
-                            Timber.e("countdown $millisUntilFinished")
-                        }
-
-                        override fun onFinish() {
-                            if (_availableConnect.value is DataResponse.DataLoading) {
-                                _availableConnect.value = DataResponse.DataError("timeout")
-                            }
-                        }
-
-                    }
-                    _availableConnect.onEach {
-                        if (it is DataResponse.DataSuccess || it is DataResponse.DataError<*, *>) {
-                            if (it is DataResponse.DataSuccess) {
-                                val json = Gson().toJson(bDevice)
-                                context.setPreference(DEVICE, json)
-                            }
-                            countDownTimer.cancel()
-                        }
-                    }.launchIn(this)
-                    countDownTimer.start()
-                }
-
-            } else {
-                dialogState.close()
-                _availableConnect.value = DataResponse.DataError(rc)
-                when (rc) {
-                    1 -> Toast.makeText(context, "Invalid DEVICE_TYPE", Toast.LENGTH_SHORT)
-                        .show()
-
-                    2 -> Toast.makeText(
-                        context,
-                        "Bluetooth LE is not supported on this device",
-                        Toast.LENGTH_SHORT
-                    ).show()
-
-                    3 -> Toast.makeText(
-                        context,
-                        "Bluetooth LE is not available",
-                        Toast.LENGTH_SHORT
-                    ).show()
-
-                    4 -> Toast.makeText(
-                        context,
-                        "Bluetooth LE is not enabled",
-                        Toast.LENGTH_SHORT
-                    ).show()
-
-                    5 -> Toast.makeText(
-                        context,
-                        "Device not paired. Please pair first",
-                        Toast.LENGTH_SHORT
-                    ).show()
-                }
+            connectDevice(context, bDevice) {
+                context.setPreference(DEVICE, bDevice)
             }
         }
 
@@ -355,14 +295,12 @@ class ConnectIdTech private constructor() : OnReceiverListener, OnReceiverListen
         }
     }
 
-    private fun timeoutConnect(dialogState: DialogState, context: Context) {
-        Handler(Looper.getMainLooper()).postDelayed({
-            if (dialogState.openState && device?.device_isConnected() == false) {
-                dialogState.close()
-                Toast.makeText(context, "An error occurred, please try again", Toast.LENGTH_LONG)
-                    .show()
-            }
-        }, 120000)
+    private fun timeoutConnect() {
+        _availableConnect.value =
+            DataResponse.DataError("Connection time has expired. If you have tried multiple times, you should check the connection again, try turning airplane mode on and off, closing the app and reopening it.")
+        unregisterListen()
+        releaseSDK()
+        device = null
     }
 
     fun setTypeConnectBluetooth(context: Context): Boolean {
@@ -377,14 +315,17 @@ class ConnectIdTech private constructor() : OnReceiverListener, OnReceiverListen
             releaseSDK()
         }
         device = IDT_VP3300(this, this, context)
-        profileManager.doGet()
-        Toast.makeText(context, "get started", Toast.LENGTH_LONG).show()
-        device!!.log_setVerboseLoggingEnable(true)
+        profileManager = ProfileManager(this)
         fwTool = FirmwareUpdateTool(this, context)
+        profileManager.doGet()
+        Toast.makeText(context, "initializeReader", Toast.LENGTH_LONG).show()
+        device!!.log_setVerboseLoggingEnable(true)
+
+        device!!.device_setDeviceType(DEVICE_TYPE.DEVICE_VP3300_BT)
     }
 
     private var canListener = MutableStateFlow(true)
-    fun listenerIdTech(context: Context, canListener: MutableStateFlow<Boolean>) {
+    fun listenerTransactionIdTech(context: Context, canListener: MutableStateFlow<Boolean>) {
         this.canListener = canListener
         _message.value = ""
         if (device == null) {
@@ -403,7 +344,7 @@ class ConnectIdTech private constructor() : OnReceiverListener, OnReceiverListen
             )
             when (ret) {
                 ErrorCode.SUCCESS -> {
-                    _message.value = "Please swipe/tap/insert a card"
+                    _message.value = "Please insert a card"
 
                 }
 
@@ -412,7 +353,7 @@ class ConnectIdTech private constructor() : OnReceiverListener, OnReceiverListen
                 }
 
                 else -> {
-                    _message.value = "Cannot swipe/tap/insert card\n"
+                    _message.value = "Cannot insert card\n"
                     _message.value += "Status: " + device!!.device_getResponseCodeString(ret) + ""
                     this.canListener.value = true
                 }
@@ -426,11 +367,44 @@ class ConnectIdTech private constructor() : OnReceiverListener, OnReceiverListen
         }
     }
 
-    fun releaseSDK() {
+    fun listenerSwipeIDTech(context: Context, canListener: MutableStateFlow<Boolean>) {
+        this.canListener = canListener
+        _message.value = ""
+        if (device == null) {
+            initializeReader(context)
+        }
+        if (canListener.value) {
+            canListener.value = false
+            timesHandle = 0
+            when (val ret = device!!.msr_startMSRSwipe()) {
+                ErrorCode.SUCCESS -> {
+                    _message.value = "Please swipe/tap a card"
+                }
+
+                ErrorCode.RETURN_CODE_OK_NEXT_COMMAND -> {
+                    _message.value = "Start EMV transaction\n"
+                }
+
+                else -> {
+                    _message.value = "Cannot swipe card\n"
+                    _message.value += "Status: " + device!!.device_getResponseCodeString(ret) + ""
+                    this.canListener.value = true
+                }
+            }
+        }
+    }
+
+    fun unregisterListen() {
+        device?.unregisterListen()
+        countDownTimer?.cancel()
+    }
+
+    private fun releaseSDK() {
         if (device != null) {
             if (device!!.device_getDeviceType() != DEVICE_TYPE.DEVICE_VP3300_COM) device!!.unregisterListen()
             device!!.release()
 //            				device = null
+            context = null
         }
     }
 
@@ -440,7 +414,7 @@ class ConnectIdTech private constructor() : OnReceiverListener, OnReceiverListen
             handleMSRData()
             return
         }
-//        _cardDataState?.value = PayModel("", "", "")
+        _cardDataState?.value = PayModel("", "", "")
     }
 
     private var timesHandle = 0
@@ -592,6 +566,10 @@ class ConnectIdTech private constructor() : OnReceiverListener, OnReceiverListen
                 val data = unencryptedTags["57"] ?: ByteArray(0)
                 Timber.e(Common.getHexStringFromBytes(data))
             }
+            if (result == IDTEMVData.GO_ONLINE && !IDT_VP3300.emv_getAutoCompleteTransaction()) {
+                val resData = ResDataStruct()
+                device?.emv_cancelTransaction(resData)
+            }
             return
         }
         _cardDataState?.value = PayModel("", "", "")
@@ -643,6 +621,12 @@ class ConnectIdTech private constructor() : OnReceiverListener, OnReceiverListen
     }
 
     override fun timeout(p0: Int) {
+//        if(p0==ErrorCode.RETURN_CODE_NEO_CDCVM|| p0==ErrorCode.RETURN_CODE_NEO_POWER_OFF){
+        _message.value = ErrorCodeInfo.getErrorCodeDescription(p0)
+//        }
+        if (!this.canListener.value) {
+            this.canListener.value = true
+        }
         Timber.e("timeout")
     }
 

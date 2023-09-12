@@ -59,7 +59,7 @@ class PayActivity : ComponentActivity() {
     }
 
     override fun onDestroy() {
-        ConnectIdTech.getInstance().releaseSDK()
+        ConnectIdTech.getInstance().unregisterListen()
         super.onDestroy()
     }
 }
@@ -105,8 +105,12 @@ fun Greeting2(modifier: Modifier = Modifier) {
         with(viewModel<PayViewModel>()) {
 
             val cardData by cardDataState.collectAsState()
-            val listenerEnabled by canListener.collectAsState()
+            val listenerTransaction by canListenerTransaction.collectAsState()
             var listener2 by remember {
+                mutableStateOf(true)
+            }
+            val listenerSwipe by canListenerSwipe.collectAsState()
+            var swipeListener2 by remember {
                 mutableStateOf(true)
             }
             val payEnabled by canPay.collectAsState()
@@ -117,9 +121,14 @@ fun Greeting2(modifier: Modifier = Modifier) {
 
             BackHandler {}
             rememberCoroutineScope().launch {
-                canListener.onEach {
+                canListenerTransaction.onEach {
                     if (it) {
                         listener2 = true
+                    }
+                }.launchIn(this)
+                canListenerSwipe.onEach {
+                    if (it) {
+                        swipeListener2 = true
                     }
                 }.launchIn(this)
                 disconnectState.onEach {
@@ -170,24 +179,39 @@ fun Greeting2(modifier: Modifier = Modifier) {
                     Spacer(modifier = Modifier.height(16.dp))
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Button(onClick = {
-                            if (listenerEnabled && listener2) {
+                            if (listenerTransaction && listener2 && swipeListener2) {
                                 listener2 = false
-                                listener(context.applicationContext)
+                                listenerTransaction(context.applicationContext)
                             }
-                        }, enabled = listenerEnabled && listener2) {
-                            Text(text = "listener swipe and transaction")
+                        }, enabled = listenerTransaction && listener2 && swipeListener2) {
+                            Text(text = "listener transaction")
                         }
                         Spacer(modifier = Modifier.width(4.dp))
-                        if (!(listenerEnabled && listener2)) {
+                        if (!(listenerTransaction && listener2)) {
                             LinearProgressIndicator(Modifier.fillMaxWidth())
                         }
                         Spacer(modifier = Modifier.width(4.dp))
                     }
-                    if (!listener2) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Button(onClick = {
+                            if (listenerSwipe && swipeListener2 && listener2) {
+                                swipeListener2 = false
+                                listenerSwipe(context.applicationContext)
+                            }
+                        }, enabled = listenerSwipe && swipeListener2 && listener2) {
+                            Text(text = "listener swipe")
+                        }
+                        Spacer(modifier = Modifier.width(4.dp))
+                        if (!(swipeListener2 && listenerSwipe)) {
+                            LinearProgressIndicator(Modifier.fillMaxWidth())
+                        }
+                        Spacer(modifier = Modifier.width(4.dp))
+                    }
+                    if (!(listener2 && swipeListener2)) {
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(text = message2)
                     }
-                    if (listener2) {
+                    if (listener2 && swipeListener2) {
                         Row(
                             Modifier.fillMaxWidth(),
                             verticalAlignment = Alignment.CenterVertically
@@ -257,7 +281,7 @@ fun Greeting2(modifier: Modifier = Modifier) {
 
 
 
-                    if (cardData.cardNumber.isNotEmpty() && cardData.expiry.isNotEmpty() && listenerEnabled) {
+                    if (cardData.cardNumber.isNotEmpty() && cardData.expiry.isNotEmpty() && listenerTransaction && listenerSwipe) {
                         Row {
                             Text(text = "amount:")
                             Spacer(modifier = Modifier.width(8.dp))

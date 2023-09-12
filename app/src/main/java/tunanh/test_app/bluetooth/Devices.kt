@@ -8,7 +8,6 @@ import android.content.Context
 import android.content.Intent
 import android.os.Handler
 import android.os.Looper
-import android.widget.Toast
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -148,8 +147,6 @@ private fun DevicesViewModel.DeviceContent(snackBarHostState: SnackbarHostState)
             controller.unregisterListener(listener)
         }
     }
-
-
     rememberCoroutineScope().launch {
         ConnectIdTech.getInstance().availableConnect.onEach {
             when (it) {
@@ -165,13 +162,11 @@ private fun DevicesViewModel.DeviceContent(snackBarHostState: SnackbarHostState)
 
                 is DataResponse.DataError<*, *> -> {
                     dialogState.close()
-                    if (it.errorData is String && it.errorData.isNotEmpty()) {
-                        Toast.makeText(context, it.errorData, Toast.LENGTH_LONG).show()
-                    }
+
                     if (isShowSnackBar) {
                         isShowSnackBar = false
                         val snackbarResult = snackBarHostState.showSnackbar(
-                            message = "if the device is not found please swipe down and try again",
+                            message = "if the device is not found please swipe down and try again.${it.errorData}",
                             actionLabel = "retry",
                             duration = SnackbarDuration.Long
                         )
@@ -373,6 +368,7 @@ fun DevicesViewModel.BroadcastListener() {
 private fun gotoPayActivity(context: Context) {
     context.apply {
         if (this is BluetoothActivity) {
+            isOpenPayActivity = true
             startActivity(Intent(this, PayActivity::class.java))
             finish()
         }
@@ -433,9 +429,8 @@ fun DevicesViewModel.DeviceList(dialogState: DialogState) {
                             DeviceCard(d) {
 //                                onConnect(d)
                                 connect.connectBlueTooth(
-                                    d,
-                                    context.applicationContext,
-                                    dialogState
+                                    d.address,
+                                    context.applicationContext
                                 )
                             }
                         }.onFailure {
@@ -463,9 +458,8 @@ fun DevicesViewModel.DeviceList(dialogState: DialogState) {
                     runCatching {
                         DeviceCard(it, onClick = {
                             connect.connectBlueTooth(
-                                it,
-                                context.applicationContext,
-                                dialogState
+                                it.name,
+                                context.applicationContext
                             )
 //                            mSwiperControllerManager.setSwiperType(SwiperType.IDTech)
                         })
