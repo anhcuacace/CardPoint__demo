@@ -184,7 +184,7 @@ fun Greeting2(modifier: Modifier = Modifier) {
                                 listenerTransaction(context.applicationContext)
                             }
                         }, enabled = listenerTransaction && listener2 && swipeListener2) {
-                            Text(text = "listener transaction")
+                            Text(text = "listener insert card")
                         }
                         Spacer(modifier = Modifier.width(4.dp))
                         if (!(listenerTransaction && listener2)) {
@@ -207,10 +207,10 @@ fun Greeting2(modifier: Modifier = Modifier) {
                         }
                         Spacer(modifier = Modifier.width(4.dp))
                     }
-                    if (!(listener2 && swipeListener2)) {
+//                    if (!(listener2 && swipeListener2)) {
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(text = message2)
-                    }
+//                    }
                     if (listener2 && swipeListener2) {
                         Row(
                             Modifier.fillMaxWidth(),

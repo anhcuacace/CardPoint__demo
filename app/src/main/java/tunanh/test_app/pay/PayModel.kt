@@ -4,5 +4,6 @@ data class PayModel(
     val cardNumber: String,
     val expiry: String,
     val name: String,
-    val create: Long = System.currentTimeMillis()
+    val create: Long = System.currentTimeMillis(),
+    var cardData: String = ""
 )

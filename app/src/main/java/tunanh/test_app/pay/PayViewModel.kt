@@ -129,6 +129,7 @@ class PayViewModel : ViewModel() {
 //
 //            }
             _response.value = ""
+            Timber.e("cardata: ${cardDataState.value.cardData}")
             waitingSussesAndLoadData(
                 tokenState,
                 { getToken() },
@@ -152,7 +153,7 @@ class PayViewModel : ViewModel() {
         )
 
     private suspend fun getToken() =
-        repository.getToken(AccountRequest(cardDataState.value.cardNumber))
+        repository.getToken(AccountRequest(cardDataState.value.cardData))
 
     private suspend fun capture(response: ApiResponse<AuthResponse>): ApiResponse<CaptureResponse> {
         val body = (response as ApiResponse.DataSuccess).body
@@ -174,6 +175,7 @@ class PayViewModel : ViewModel() {
             _canListenerSwipe.value = true
             updateCardData(it)
             if (it.cardNumber.isNotEmpty()) {
+                Timber.e("cardata: ${cardDataState.value.cardData}")
                 loadData(tokenState) { getToken() }
             }
         }.launchIn(viewModelScope)

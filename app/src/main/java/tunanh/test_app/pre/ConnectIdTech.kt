@@ -5,6 +5,7 @@ import android.content.Context
 import android.os.CountDownTimer
 import android.os.Handler
 import android.os.Looper
+import android.util.Base64
 import android.widget.Toast
 import com.dbconnection.dblibrarybeta.ProfileManager
 import com.dbconnection.dblibrarybeta.RESTResponse
@@ -104,8 +105,6 @@ class ConnectIdTech private constructor() : OnReceiverListener, OnReceiverListen
                     }
                 }
                 device!!.setIDT_Device(fwTool)
-
-
                 delay(1000)
                 if ((_availableConnect.value !is DataResponse.DataSuccess) || _availableConnect.value.loadingStatus == LoadingStatus.Error) {
                     if (device!!.device_connect()) {
@@ -480,15 +479,16 @@ class ConnectIdTech private constructor() : OnReceiverListener, OnReceiverListen
                     "$month$year"
                 } else ""
             }
-        Timber.tag("tunanh").e(Common.getHexStringFromBytes(cardData))
+        Timber.e(Base64.encodeToString(cardData, Base64.DEFAULT) ?: "")
         val name = track1?.substring(track1.indexOf("^") + 1, track1.lastIndexOf("^"))?.trim()
             .ifNullOrEmpty {
                 cardData?.let {
-                    CardData(it)
                     extractCardholderName(it)
                 } ?: "null"
             }
-        _cardDataState?.value = PayModel(cardNumber, expirationDate, name)
+        _cardDataState?.value =
+            PayModel(cardNumber, expirationDate, name, cardData = Common.getHexStringFromBytes(rawTrackData))
+        Timber.e("cardata: ${Common.getHexStringFromBytes(rawTrackData)}")
     }
 
     private fun extractCardholderName(byteArray: ByteArray): String? {
