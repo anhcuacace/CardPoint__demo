@@ -488,6 +488,15 @@ class ConnectIdTech private constructor() : OnReceiverListener, OnReceiverListen
             }
         _cardDataState?.value =
             PayModel(cardNumber, expirationDate, name, cardData = Common.getHexStringFromBytes(rawTrackData))
+        CoroutineScope(Dispatchers.Main).launch {
+            delay(2000)
+            if (result == IDTEMVData.GO_ONLINE && !IDT_VP3300.emv_getAutoCompleteTransaction()) {
+
+                val resData = ResDataStruct()
+                completeTransaction(resData)
+            }
+        }
+
         Timber.e("cardata: ${Common.getHexStringFromBytes(rawTrackData)}")
     }
 

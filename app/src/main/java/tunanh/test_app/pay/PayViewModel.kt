@@ -153,11 +153,11 @@ class PayViewModel : ViewModel() {
         )
 
     private suspend fun getToken() =
-        repository.getToken(AccountRequest(cardDataState.value.cardData))
+        repository.getToken(AccountRequest(cardDataState.value.cardNumber))
 
     private suspend fun capture(response: ApiResponse<AuthResponse>): ApiResponse<CaptureResponse> {
         val body = (response as ApiResponse.DataSuccess).body
-        return repository.putCapture(CaptureRequest(amount, body.merchid, body.retref))
+        return repository.putCapture(CaptureRequest( body.merchid, body.retref))
     }
 
     fun updateCardData(data: PayModel) {

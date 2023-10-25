@@ -26,9 +26,11 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
+import timber.log.Timber
 import tunanh.test_app.DataResponse
 import tunanh.test_app.DevicesViewModel
 import tunanh.test_app.R
@@ -44,6 +46,7 @@ import tunanh.test_app.ui.theme.Test_appTheme
 class PayActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        Timber.e("oncreate")
         ConnectIdTech.getInstance().disconnectState.value = false
         setContent {
             Test_appTheme {
@@ -121,6 +124,22 @@ fun Greeting2(modifier: Modifier = Modifier) {
 
             BackHandler {}
             rememberCoroutineScope().launch {
+                disconnectState.collect {
+                    if (it) {
+                        if (context is PayActivity) {
+                            Toast.makeText(
+                                context.applicationContext,
+                                "lost connection need reconnect",
+                                Toast.LENGTH_LONG
+                            ).show()
+                            context.startActivity(Intent(context, PreActivity::class.java))
+                            Timber.e("lost connection need reconnect")
+                            context.finish()
+                        }
+                    }
+                }
+            }
+            rememberCoroutineScope().launch {
                 canListenerTransaction.onEach {
                     if (it) {
                         listener2 = true
@@ -131,19 +150,7 @@ fun Greeting2(modifier: Modifier = Modifier) {
                         swipeListener2 = true
                     }
                 }.launchIn(this)
-                disconnectState.onEach {
-                    if (it) {
-                        if (context is PayActivity) {
-                            Toast.makeText(
-                                context.applicationContext,
-                                "lost connection need reconnect",
-                                Toast.LENGTH_LONG
-                            ).show()
-                            context.startActivity(Intent(context, PreActivity::class.java))
-                            context.finish()
-                        }
-                    }
-                }.launchIn(this)
+
                 autoConnectState.onEach {
                     when (it) {
                         is DataResponse.DataSuccess -> {
